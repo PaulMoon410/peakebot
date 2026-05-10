@@ -166,9 +166,19 @@ def ftp_append_conversation(user_message: str, ai_response: str, memory_state: d
 def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict]:
     """
     Search conversations in today's daily file.
-    Uses word-overlap scoring.
+    Uses word-overlap scoring with stop-word filtering and minimum threshold.
     """
-    query_words = set(re.findall(r"\w+", query.lower()))
+    # Common stop words to ignore in matching
+    stop_words = {
+        "a", "an", "and", "are", "as", "at", "be", "but", "by",
+        "for", "from", "if", "in", "is", "it", "of", "on", "or",
+        "that", "the", "to", "was", "what", "when", "where", "which",
+        "who", "will", "with", "how", "many", "can", "do", "does",
+        "did", "have", "has", "this", "these", "those", "you", "your",
+        "i", "me", "my", "we", "us", "our"
+    }
+    
+    query_words = set(w for w in re.findall(r"\w+", query.lower()) if w not in stop_words and len(w) > 2)
     if not query_words:
         return []
 
@@ -179,13 +189,18 @@ def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict
         for conv in conversations:
             user_msg = conv.get("user_message", "")
             ai_msg = conv.get("ai_response", "")
-            combined = re.findall(r"\w+", (user_msg + " " + ai_msg).lower())
-            overlap = query_words.intersection(set(combined))
-            if overlap:
-                scored.append((len(overlap), conv))
+            combined_words = set(w for w in re.findall(r"\w+", (user_msg + " " + ai_msg).lower()) if w not in stop_words and len(w) > 2)
+            overlap = query_words.intersection(combined_words)
+            
+            # Only consider matches with at least 2 significant word overlaps or >30% of query words
+            min_overlap = max(2, len(query_words) // 3)
+            if len(overlap) >= min_overlap:
+                # Score based on percentage of query words matched
+                score = len(overlap) / len(query_words)
+                scored.append((score, len(overlap), conv))
         
-        scored.sort(key=lambda x: x[0], reverse=True)
-        return [entry for _, entry in scored[:max_results]]
+        scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        return [entry[2] for entry in scored[:max_results]]
     except Exception as exc:
         print(f"[knowledge_server] ERROR searching daily knowledge: {exc}")
         return []
