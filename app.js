@@ -65,6 +65,14 @@ function updateChatAvailability() {
 function persistMemory() {
   state.memory.profile.updatedAt = new Date().toISOString();
   renderMemory();
+  // Sync to Render server (fire-and-forget)
+  if (state.nodeConnected) {
+    fetch(`${RENDER_SERVER}/api/memory`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state.memory),
+    }).catch(() => { /* non-critical */ });
+  }
 }
 
 function setStatus(message, isError = false) {
@@ -133,7 +141,7 @@ function escapeHtml(text) {
 function renderMemory() {
   elements.memoryPreview.textContent = JSON.stringify(state.memory, null, 2);
   const stats = [
-    "Storage: Runtime only (no localStorage)",
+    `Storage: ${state.nodeConnected ? "Synced to Render server" : "Runtime only (server offline)"}`,
     `AI Server: ${LLAMA_SERVER}`,
     `Facts: ${state.memory.facts.length}`,
     `Notes: ${state.memory.notes.length}`,
@@ -507,12 +515,30 @@ function startConnectionMonitor() {
   });
 }
 
-function initializeMemory() {
+async function initializeMemory() {
   state.memory = defaultMemory();
-  setStatus("Using runtime memory only (not persisted in localStorage).");
   updateChatAvailability();
-  checkConnections();
+  await checkConnections();
   startConnectionMonitor();
+
+  // Load persisted memory from Render server
+  if (state.nodeConnected) {
+    try {
+      const res = await fetch(`${RENDER_SERVER}/api/memory`, { cache: "no-store" });
+      if (res.ok) {
+        const remote = await res.json();
+        if (remote && typeof remote === "object") {
+          state.memory = { ...defaultMemory(), ...remote };
+          setStatus("Memory loaded from server.");
+        }
+      }
+    } catch {
+      setStatus("Could not load remote memory — using runtime defaults.", true);
+    }
+  } else {
+    setStatus("Using runtime memory only (server offline).");
+  }
+
   renderMemory();
 }
 
