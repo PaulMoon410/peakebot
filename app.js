@@ -332,21 +332,34 @@ async function generateReply(prompt) {
     
     // Fall back to Render Node server
     if (state.nodeConnected) {
-      const nodeResponse = await fetch(`${RENDER_SERVER}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: text,
-          memory: state.memory,
-        }),
-      });
+      try {
+        const nodeResponse = await fetch(`${RENDER_SERVER}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: text,
+            memory: state.memory,
+          }),
+        });
 
-      if (nodeResponse.ok) {
-        const data = await nodeResponse.json();
-        if (data.response) {
+        let data = null;
+        try {
+          data = await nodeResponse.json();
+        } catch {
+          // Non-JSON response; handled below with generic message.
+        }
+
+        if (nodeResponse.ok && data?.response) {
           return data.response;
         }
-      } else {
+
+        if (!nodeResponse.ok) {
+          const message = data?.error || `Node proxy error (${nodeResponse.status}).`;
+          return message;
+        }
+
+        return "Node server returned an unexpected response.";
+      } catch (error) {
         state.nodeConnected = false;
         setConnectionStatus();
       }
