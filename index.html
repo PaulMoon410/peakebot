@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Front-End Memory AI</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <h1>Front-End AI</h1>
+      <p class="muted">Browser-only memory with JSON recall and optional IPFS loading.</p>
+
+      <section class="panel">
+        <h2>Memory</h2>
+        <button id="export-memory">Export JSON</button>
+        <button id="copy-memory">Copy JSON</button>
+        <button id="clear-memory" class="danger">Clear Local Memory</button>
+      </section>
+
+      <section class="panel">
+        <h2>Load JSON</h2>
+        <label for="load-url">Website or IPFS URL</label>
+        <input id="load-url" type="text" placeholder="https://example.com/memory.json or ipfs://CID" />
+        <button id="load-url-button">Load Remote JSON</button>
+
+        <label for="import-file">Import local JSON file</label>
+        <input id="import-file" type="file" accept="application/json" />
+      </section>
+
+      <section class="panel">
+        <h2>Status</h2>
+        <div id="connection-status" class="connection-status" style="margin-bottom: 12px; padding: 8px; border-radius: 4px; font-size: 0.9em; font-weight: bold;">
+          🔴 Connecting...
+        </div>
+        <div id="status" class="status">Ready.</div>
+        <ul id="memory-stats" class="stats"></ul>
+      </section>
+    </aside>
+
+    <main class="main-panel">
+      <section class="hero panel">
+        <h2>How this works</h2>
+        <p>
+          This AI stores its memory as JSON in browser storage tied to this site origin.
+          It can also recall JSON from a website URL or an IPFS URL/CID and merge that into memory.
+        </p>
+      </section>
+
+      <section class="chat panel">
+        <div id="chat-log" class="chat-log"></div>
+        <form id="chat-form" class="chat-form">
+          <textarea id="chat-input" rows="3" placeholder="Try: remember that my favorite color is blue"></textarea>
+          <button type="submit">Send</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h2>Current JSON Memory</h2>
+        <pre id="memory-preview" class="memory-preview"></pre>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

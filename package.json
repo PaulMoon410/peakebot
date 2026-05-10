@@ -1,0 +1,19 @@
+{
+  "name": "peakecoin-ai",
+  "version": "1.0.0",
+  "description": "AI chat interface with memory persistence and Llama integration",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["ai", "chat", "memory", "llama"],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "dependencies": {
+    "basic-ftp": "^5.0.2"
+  }
+}
