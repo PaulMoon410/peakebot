@@ -9,6 +9,7 @@ const PORT = process.env.PORT || 3000;
 const PYTHON_KNOWLEDGE_SERVER = process.env.PYTHON_KNOWLEDGE_SERVER || "http://localhost:5001";
 const PYTHON_PORT = parseInt(process.env.PYTHON_PORT || "5001", 10);
 const START_PYTHON_SERVER = process.env.START_PYTHON_SERVER !== "false";
+const FTP_BRAIN_DIR = process.env.FTP_BRAIN_DIR || "/ai/brain";
 
 const DATA_DIR = path.join(__dirname, "data");
 const MEMORY_FILE = path.join(DATA_DIR, "memory.json");
@@ -515,6 +516,7 @@ function startPythonServer() {
         FTP_HOST: process.env.FTP_HOST || "ftp.geocities.ws",
         FTP_USER: process.env.FTP_USER || "PeakeCoin",
         FTP_PASSWORD: process.env.FTP_PASSWORD || "Peake410",
+        FTP_BRAIN_DIR,
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -574,7 +576,8 @@ function stopPythonServer() {
     console.log(`[main] AI Memory server running at http://localhost:${PORT}`);
     console.log("[main] Mode: Python memory engine only");
     console.log(`[main] Python knowledge server: ${PYTHON_KNOWLEDGE_SERVER}`);
-    console.log(`[main] Knowledge saved to: ${KNOWLEDGE_DIR}`);
+    console.log(`[main] Knowledge store (primary): FTP ${FTP_BRAIN_DIR}`);
+    console.log(`[main] Local knowledge dir (legacy/cache only): ${KNOWLEDGE_DIR}`);
   });
 })();
 
