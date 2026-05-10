@@ -6,6 +6,7 @@ const elements = {
   chatLog: document.querySelector("#chat-log"),
   chatForm: document.querySelector("#chat-form"),
   chatInput: document.querySelector("#chat-input"),
+  chatSubmit: document.querySelector("#chat-form button[type='submit']"),
   memoryPreview: document.querySelector("#memory-preview"),
   status: document.querySelector("#status"),
   connectionStatus: document.querySelector("#connection-status"),
@@ -37,6 +38,25 @@ const state = {
   llamaConnected: false,
   nodeConnected: false,
 };
+
+function hasAiConnection() {
+  return state.llamaConnected || state.nodeConnected;
+}
+
+function updateChatAvailability() {
+  const online = hasAiConnection();
+
+  if (elements.chatInput) {
+    elements.chatInput.disabled = !online;
+    if (!online) {
+      elements.chatInput.placeholder = "Waiting for AI connection (Llama or Render Node)...";
+    }
+  }
+
+  if (elements.chatSubmit) {
+    elements.chatSubmit.disabled = !online;
+  }
+}
 
 function persistMemory() {
   state.memory.profile.updatedAt = new Date().toISOString();
@@ -84,6 +104,8 @@ function setConnectionStatus() {
     elements.connectionStatus.textContent = `${icon} ${text}`;
     elements.connectionStatus.style.backgroundColor = bg;
   }
+
+  updateChatAvailability();
 }
 
 function addMessage(role, text) {
@@ -342,6 +364,15 @@ function logConversation(prompt, response) {
 
 async function handleChatSubmit(event) {
   event.preventDefault();
+
+  if (!hasAiConnection()) {
+    setStatus("AI is offline. Waiting for Llama or Render Node connection.", true);
+    await checkConnections();
+    if (!hasAiConnection()) {
+      return;
+    }
+  }
+
   const prompt = elements.chatInput.value.trim();
   if (!prompt) {
     return;
@@ -437,6 +468,7 @@ async function checkConnections() {
 function initializeMemory() {
   state.memory = { ...defaultMemory(), ...loadLocalMemory() };
   setStatus("Using browser localStorage for memory.");
+  updateChatAvailability();
   checkConnections();
   renderMemory();
 }
