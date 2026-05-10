@@ -10,26 +10,27 @@
   <div class="app-shell">
     <aside class="sidebar">
       <h1>Front-End AI</h1>
-      <p class="muted">Runtime memory tools and JSON loading in one place.</p>
+      <p class="muted">Runtime memory tools in one place.</p>
 
       <section class="panel">
         <h2>Memory Tools</h2>
-        <p class="panel-note">Manage your memory data, then load a JSON file or URL to merge new knowledge.</p>
+        <p class="panel-note">Manage your memory data for export, copy, or reset.</p>
         <div class="stack-actions">
           <button id="export-memory">Export JSON</button>
           <button id="copy-memory">Copy JSON</button>
           <button id="clear-memory" class="danger">Clear Runtime Memory</button>
         </div>
+      </section>
 
-        <div class="divider"></div>
-        <p class="section-label">Load .json</p>
-        <p class="panel-note">Paste a website/IPFS source or import a local .json file.</p>
-        <label for="load-url">Website or IPFS URL</label>
-        <input id="load-url" type="text" placeholder="https://example.com/memory.json or ipfs://CID" />
-        <button id="load-url-button">Load Remote JSON</button>
-
-        <label for="import-file">Import local JSON file</label>
-        <input id="import-file" type="file" accept="application/json" />
+      <section class="panel">
+        <h2>Admin: Force Learn</h2>
+        <p class="panel-note">Manually input a question/answer pair for the engine to store and learn from.</p>
+        <label for="admin-question">Question</label>
+        <textarea id="admin-question" rows="2" placeholder="What is the capital of France?"></textarea>
+        <label for="admin-answer">Answer</label>
+        <textarea id="admin-answer" rows="2" placeholder="The capital of France is Paris."></textarea>
+        <button id="admin-learn-button">Learn This</button>
+        <div id="admin-status" class="status" style="margin-top: 0.5rem; font-size: 0.85rem;"></div>
       </section>
 
       <section class="panel">

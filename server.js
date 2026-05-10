@@ -383,6 +383,92 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === "/api/knowledge" && req.method === "POST") {
+    const chunks = [];
+    let receivedBytes = 0;
+    const maxBytes = 5 * 1024 * 1024;
+
+    req.on("data", (chunk) => {
+      receivedBytes += chunk.length;
+      if (receivedBytes > maxBytes) {
+        sendJson(res, 413, { error: "Payload too large." });
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+
+    req.on("end", async () => {
+      try {
+        const raw = Buffer.concat(chunks).toString("utf8");
+        const payload = JSON.parse(raw || "{}");
+
+        if (!payload.user_message || !payload.ai_response) {
+          sendJson(res, 400, { error: "Missing user_message or ai_response." });
+          return;
+        }
+
+        // Proxy to Python /knowledge POST
+        const pyUrl = new URL(`${PYTHON_KNOWLEDGE_SERVER}/knowledge`);
+        const pyTransport = pyUrl.protocol === "https:" ? https : http;
+        const pyPayload = JSON.stringify(payload);
+
+        const pyResponse = await new Promise((resolve, reject) => {
+          const options = {
+            hostname: pyUrl.hostname,
+            port: pyUrl.port || 5001,
+            path: pyUrl.pathname,
+            method: "POST",
+            timeout: 15000,
+            headers: {
+              "Content-Type": "application/json",
+              "Content-Length": Buffer.byteLength(pyPayload),
+            },
+          };
+
+          const pyReq = pyTransport.request(options, (pyRes) => {
+            const pyChunks = [];
+            pyRes.on("data", (c) => pyChunks.push(c));
+            pyRes.on("end", () => {
+              const body = Buffer.concat(pyChunks).toString("utf8");
+              try {
+                resolve({
+                  status: pyRes.statusCode,
+                  data: JSON.parse(body),
+                });
+              } catch {
+                reject(new Error(`Invalid JSON from Python: ${body.slice(0, 100)}`));
+              }
+            });
+          });
+
+          pyReq.on("timeout", () => {
+            pyReq.destroy();
+            reject(new Error("Python server timeout"));
+          });
+          pyReq.on("error", reject);
+          pyReq.write(pyPayload);
+          pyReq.end();
+        });
+
+        if (pyResponse.status !== 201 && pyResponse.status !== 200) {
+          throw new Error(`Python returned ${pyResponse.status}: ${pyResponse.data.error || "unknown error"}`);
+        }
+
+        console.log(`[main] Admin knowledge learned from frontend`);
+        sendJson(res, 200, pyResponse.data);
+      } catch (error) {
+        console.error("[main] Knowledge POST failed:", error.message);
+        sendJson(res, 502, { error: `Failed to learn knowledge: ${error.message}` });
+      }
+    });
+
+    req.on("error", () => {
+      sendJson(res, 400, { error: "Request stream error." });
+    });
+    return;
+  }
+
   // Proxy knowledge list from Python server
   if (url.pathname === "/api/python-knowledge" && req.method === "GET") {
     const limitParam = url.searchParams.get("limit");
