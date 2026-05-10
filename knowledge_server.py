@@ -105,92 +105,94 @@ def ftp_download_file(filename: str) -> Optional[dict]:
         ftp.quit()
 
 
-def ftp_upload_knowledge(data: dict) -> str:
-    """Upload a knowledge entry to FTP and return the filename."""
-    ftp = _ftp_connect()
+def ftp_get_daily_filename() -> str:
+    """Return the daily knowledge file path based on current UTC date."""
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return f"{FTP_BRAIN_DIR}/{date_str}.json"
+
+
+def ftp_load_daily_knowledge() -> List[dict]:
+    """Load today's conversation array from FTP. Returns empty list if file doesn't exist."""
     try:
-        _ensure_ftp_dir(ftp, FTP_BRAIN_DIR)
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
-        # Short hash for uniqueness without random state issues
-        digest = hashlib.sha1(json.dumps(data, sort_keys=True).encode()).hexdigest()[:7]
-        filename = f"conversation-{ts}-{digest}.json"
-        payload = json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8")
-        ftp.storbinary(f"STOR {FTP_BRAIN_DIR}/{filename}", io.BytesIO(payload))
-        return filename
-    finally:
+        ftp = _ftp_connect()
+        filename = ftp_get_daily_filename()
+        buf = io.BytesIO()
+        try:
+            ftp.retrbinary(f"RETR {filename}", buf.write)
+        except ftplib.error_perm:
+            ftp.quit()
+            return []
+        
         ftp.quit()
+        buf.seek(0)
+        data = json.loads(buf.read().decode("utf-8"))
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def ftp_append_conversation(user_message: str, ai_response: str, memory_state: dict) -> bool:
+    """
+    Append a conversation to today's daily file on FTP.
+    Creates the file if it doesn't exist.
+    """
+    try:
+        # Load today's conversations
+        conversations = ftp_load_daily_knowledge()
+        
+        # Append new conversation
+        conversations.append({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "user_message": user_message,
+            "ai_response": ai_response,
+            "memory_state": memory_state,
+        })
+        
+        # Upload back to FTP
+        ftp = _ftp_connect()
+        _ensure_ftp_dir(ftp, FTP_BRAIN_DIR)
+        filename = ftp_get_daily_filename()
+        payload = json.dumps(conversations, indent=2, ensure_ascii=False).encode("utf-8")
+        ftp.storbinary(f"STOR {filename}", io.BytesIO(payload))
+        ftp.quit()
+        
+        # Clear cache for this file
+        with _cache_lock:
+            _cache.pop(filename, None)
+        
+        return True
+    except Exception as exc:
+        print(f"[knowledge_server] ERROR appending conversation: {exc}")
+        return False
 
 
 def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict]:
     """
-    Search FTP brain for past conversations relevant to the query.
-    Uses simple word-overlap scoring against user_message and ai_response.
-    Returns up to max_results entries sorted by relevance score (highest first).
+    Search conversations in today's daily file.
+    Uses word-overlap scoring.
     """
     query_words = set(re.findall(r"\w+", query.lower()))
     if not query_words:
         return []
 
-    # Pull from cache first, then FTP for anything missing
-    scored = []
     try:
-        files = ftp_list_knowledge()
-        ftp = _ftp_connect()
-        try:
-            for entry in files[:100]:  # Scan up to 100 most recent entries
-                name = entry["name"]
-                # Use cached version if available
-                with _cache_lock:
-                    data = _cache.get(name)
-
-                if data is None:
-                    buf = io.BytesIO()
-                    try:
-                        ftp.retrbinary(f"RETR {FTP_BRAIN_DIR}/{name}", buf.write)
-                        buf.seek(0)
-                        data = json.loads(buf.read().decode("utf-8"))
-                        with _cache_lock:
-                            _cache[name] = data
-                    except Exception:
-                        continue
-
-                user_msg = data.get("user_message", "")
-                ai_msg = data.get("ai_response", "")
-                combined = re.findall(r"\w+", (user_msg + " " + ai_msg).lower())
-                overlap = query_words.intersection(set(combined))
-                if overlap:
-                    scored.append((len(overlap), data))
-        finally:
-            ftp.quit()
+        conversations = ftp_load_daily_knowledge()
+        scored = []
+        
+        for conv in conversations:
+            user_msg = conv.get("user_message", "")
+            ai_msg = conv.get("ai_response", "")
+            combined = re.findall(r"\w+", (user_msg + " " + ai_msg).lower())
+            overlap = query_words.intersection(set(combined))
+            if overlap:
+                scored.append((len(overlap), conv))
+        
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [entry for _, entry in scored[:max_results]]
     except Exception as exc:
-        print(f"[knowledge_server] WARNING: knowledge search failed: {exc}")
+        print(f"[knowledge_server] ERROR searching daily knowledge: {exc}")
         return []
 
-    scored.sort(key=lambda x: x[0], reverse=True)
-    return [entry for _, entry in scored[:max_results]]
-
-
-
-    """Return True if an identical AI response already exists on FTP."""
-    try:
-        files = ftp_list_knowledge()
-        ftp = _ftp_connect()
-        try:
-            for entry in files[:50]:  # Check most recent 50 to limit FTP traffic
-                buf = io.BytesIO()
-                try:
-                    ftp.retrbinary(f"RETR {FTP_BRAIN_DIR}/{entry['name']}", buf.write)
-                    buf.seek(0)
-                    data = json.loads(buf.read().decode("utf-8"))
-                    if data.get("ai_response") == ai_response:
-                        return True
-                except Exception:
-                    continue
-        finally:
-            ftp.quit()
-        return False
-    except Exception:
-        return False
 
 
 # ---------------------------------------------------------------------------
@@ -431,30 +433,15 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 return
 
             try:
-                # Optional duplicate check (caller can skip with check_duplicate=false)
-                check_dup = str(body.get("check_duplicate", "true")).lower() != "false"
-                is_duplicate = False
-                if check_dup:
-                    is_duplicate = ftp_check_duplicate(ai_response)
-
-                if is_duplicate:
-                    self._send(200, {"ok": True, "duplicate": True, "filename": None})
-                    return
-
-                entry = {
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "user_message": user_message,
-                    "ai_response": ai_response,
-                    "memory_state": memory_state,
-                }
-                filename = ftp_upload_knowledge(entry)
-
-                # Populate cache
-                with _cache_lock:
-                    _cache[filename] = entry
-
-                print(f"[knowledge_server] Saved: {filename}")
-                self._send(201, {"ok": True, "duplicate": False, "filename": filename})
+                # Append to today's daily file on FTP
+                ok = ftp_append_conversation(user_message, ai_response, memory_state)
+                
+                if ok:
+                    daily_file = ftp_get_daily_filename()
+                    print(f"[knowledge_server] Knowledge appended to {daily_file}")
+                    self._send(201, {"ok": True, "daily_file": daily_file})
+                else:
+                    raise Exception("Failed to append to FTP")
             except Exception as exc:
                 print(f"[knowledge_server] ERROR saving knowledge: {exc}")
                 self._send(500, {"error": str(exc)})
@@ -529,26 +516,20 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 self._send(502, {"error": f"Llama server error: {exc}"})
                 return
 
-            # Store the conversation in FTP /ai/brain (non-blocking best-effort)
+            # Store the conversation to today's daily file on FTP
             try:
-                entry = {
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "user_message": prompt,
-                    "ai_response": ai_response,
-                    "memory_state": memory,
-                }
-                filename = ftp_upload_knowledge(entry)
-                with _cache_lock:
-                    _cache[filename] = entry
-                print(f"[knowledge_server] Chat saved: {filename}")
+                ok = ftp_append_conversation(prompt, ai_response, memory)
+                if ok:
+                    daily_file = ftp_get_daily_filename()
+                    print(f"[knowledge_server] Chat appended to {daily_file}")
+                else:
+                    print(f"[knowledge_server] WARNING: could not append to FTP")
             except Exception as exc:
-                print(f"[knowledge_server] WARNING: could not save to FTP: {exc}")
-                filename = None
+                print(f"[knowledge_server] WARNING: FTP append failed: {exc}")
 
             self._send(200, {
                 "response": ai_response,
                 "source": "python-knowledge-server",
-                "filename": filename,
             })
             return
 

@@ -315,24 +315,39 @@ async function saveToBrain(userMessage, aiResponse, memory) {
       await client.ensureDir("/ai/brain");
     }
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, -5);
-    const filename = `conversation-${timestamp}-${Math.random().toString(36).substring(7)}.json`;
+    // Generate today's daily filename (e.g., 2026-05-10.json)
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
+    const dailyFilename = `/ai/brain/${dateStr}.json`;
     
-    const conversation = {
+    // Load existing daily file or start with empty array
+    let conversations = [];
+    try {
+      const existing = await client.downloadToString(dailyFilename);
+      conversations = JSON.parse(existing) || [];
+      if (!Array.isArray(conversations)) conversations = [];
+    } catch (err) {
+      // File doesn't exist yet, start fresh
+      conversations = [];
+    }
+
+    // Append new conversation
+    conversations.push({
       timestamp: new Date().toISOString(),
       user_message: userMessage,
       ai_response: aiResponse,
       memory_state: memory,
-    };
+    });
 
-    const jsonData = JSON.stringify(conversation, null, 2);
-    await client.uploadFrom(Buffer.from(jsonData), `/ai/brain/${filename}`);
+    // Upload back to FTP
+    const jsonData = JSON.stringify(conversations, null, 2);
+    await client.uploadFrom(Buffer.from(jsonData), dailyFilename);
     
     client.close();
-    console.log(`Saved to FTP: ${filename}`);
-    return filename;
+    console.log(`[main] Appended to FTP: ${dailyFilename} (${conversations.length} total conversations today)`);
+    return dailyFilename;
   } catch (error) {
-    console.error("Error saving to FTP:", error.message);
+    console.error("[main] Error saving to FTP:", error.message);
     // Fall back to local save
     return null;
   }
