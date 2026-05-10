@@ -3,11 +3,14 @@ const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const { URL } = require("url");
+const { spawn } = require("child_process");
 const Client = require("basic-ftp").Client;
 
 const PORT = process.env.PORT || 3000;
 const LLAMA_SERVER = process.env.LLAMA_SERVER || "http://74.208.146.37:8080";
 const PYTHON_KNOWLEDGE_SERVER = process.env.PYTHON_KNOWLEDGE_SERVER || "http://localhost:5001";
+const PYTHON_PORT = parseInt(process.env.PYTHON_PORT || "5001", 10);
+const START_PYTHON_SERVER = process.env.START_PYTHON_SERVER !== "false";
 
 // FTP Configuration from environment variables
 const FTP_CONFIG = {
@@ -533,10 +536,116 @@ const server = http.createServer(async (req, res) => {
   serveStatic(req, res, url.pathname);
 });
 
-server.listen(PORT, () => {
-  ensureDirectories();
-  console.log(`AI Memory server running at http://localhost:${PORT}`);
-  console.log(`Llama server: ${LLAMA_SERVER}`);
-  console.log(`Knowledge saved to: ${KNOWLEDGE_DIR}`);
+// ---------------------------------------------------------------------------
+// Python knowledge server subprocess
+// ---------------------------------------------------------------------------
+
+let pythonProcess = null;
+
+function startPythonServer() {
+  if (!START_PYTHON_SERVER) {
+    console.log("[main] Python server disabled (START_PYTHON_SERVER=false)");
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    const pythonScript = path.join(__dirname, "knowledge_server.py");
+    
+    if (!fs.existsSync(pythonScript)) {
+      console.error(`[main] WARNING: knowledge_server.py not found at ${pythonScript}`);
+      resolve(); // Continue anyway; Python might not be needed for Render
+      return;
+    }
+
+    console.log(`[main] Starting Python knowledge server on port ${PYTHON_PORT}...`);
+    
+    pythonProcess = spawn("python3", [pythonScript], {
+      env: {
+        ...process.env,
+        PYTHON_PORT: String(PYTHON_PORT),
+        FTP_HOST: process.env.FTP_HOST || "ftp.geocities.ws",
+        FTP_USER: process.env.FTP_USER || "PeakeCoin",
+        FTP_PASSWORD: process.env.FTP_PASSWORD || "Peake410",
+        LLAMA_SERVER: LLAMA_SERVER,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let pythonReady = false;
+
+    pythonProcess.stdout.on("data", (data) => {
+      const msg = data.toString().trim();
+      console.log(`[python] ${msg}`);
+      if (msg.includes("running on port")) {
+        pythonReady = true;
+        if (!pythonReady) resolve();
+      }
+    });
+
+    pythonProcess.stderr.on("data", (data) => {
+      console.error(`[python-err] ${data.toString().trim()}`);
+    });
+
+    pythonProcess.on("error", (err) => {
+      console.error(`[main] Failed to spawn Python: ${err.message}`);
+      reject(err);
+    });
+
+    pythonProcess.on("exit", (code) => {
+      console.log(`[main] Python server exited with code ${code}`);
+      pythonProcess = null;
+    });
+
+    // Give Python a moment to start, then resolve regardless
+    setTimeout(() => resolve(), 1500);
+  });
+}
+
+function stopPythonServer() {
+  if (pythonProcess) {
+    console.log("[main] Terminating Python server...");
+    pythonProcess.kill("SIGTERM");
+    setTimeout(() => {
+      if (pythonProcess) {
+        pythonProcess.kill("SIGKILL");
+      }
+    }, 3000);
+  }
+}
+
+// Start Node.js server after Python is ready
+(async () => {
+  try {
+    await startPythonServer();
+  } catch (err) {
+    console.error(`[main] Could not start Python: ${err.message}`);
+  }
+
+  server.listen(PORT, () => {
+    ensureDirectories();
+    console.log(`[main] AI Memory server running at http://localhost:${PORT}`);
+    console.log(`[main] Llama server: ${LLAMA_SERVER}`);
+    console.log(`[main] Python knowledge server: ${PYTHON_KNOWLEDGE_SERVER}`);
+    console.log(`[main] Knowledge saved to: ${KNOWLEDGE_DIR}`);
+  });
+})();
+
+// Graceful shutdown
+process.on("SIGTERM", () => {
+  console.log("[main] SIGTERM received, shutting down...");
+  stopPythonServer();
+  server.close(() => {
+    console.log("[main] Server closed.");
+    process.exit(0);
+  });
+});
+
+process.on("SIGINT", () => {
+  console.log("[main] SIGINT received, shutting down...");
+  stopPythonServer();
+  server.close(() => {
+    console.log("[main] Server closed.");
+    process.exit(0);
+  });
 });
 
