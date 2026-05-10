@@ -1,0 +1,17 @@
+# Python Knowledge Server dependencies
+# The knowledge_server.py uses only Python standard library modules:
+#   - http.server   (built-in HTTP server)
+#   - ftplib        (built-in FTP client)
+#   - json, io, re, threading, hashlib, datetime, os, urllib.parse
+#
+# No external packages are required.
+# Python 3.10+ is recommended (uses built-in type union hints).
+#
+# To verify your Python version:
+#   python3 --version
+#
+# To run the server:
+#   python3 knowledge_server.py
+#
+# Optional: install Flask if you prefer a Flask-based variant in the future
+# flask>=3.0.0

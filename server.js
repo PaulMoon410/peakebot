@@ -7,6 +7,7 @@ const Client = require("basic-ftp").Client;
 
 const PORT = process.env.PORT || 3000;
 const LLAMA_SERVER = process.env.LLAMA_SERVER || "http://74.208.146.37:8080";
+const PYTHON_KNOWLEDGE_SERVER = process.env.PYTHON_KNOWLEDGE_SERVER || "http://localhost:5001";
 
 // FTP Configuration from environment variables
 const FTP_CONFIG = {
@@ -80,6 +81,109 @@ function saveKnowledge(conversation) {
   }, null, 2), "utf8");
   
   return filepath;
+}
+
+// ---------------------------------------------------------------------------
+// Python knowledge server bridge
+// ---------------------------------------------------------------------------
+
+/**
+ * POST a knowledge entry to the Python server.
+ * Returns true on success, false if the Python server is unavailable.
+ */
+async function pyStoreKnowledge(userMessage, aiResponse, memoryState) {
+  return new Promise((resolve) => {
+    const pyUrl = new URL(`${PYTHON_KNOWLEDGE_SERVER}/knowledge`);
+    const transport = pyUrl.protocol === "https:" ? https : http;
+    const payload = JSON.stringify({
+      user_message: userMessage,
+      ai_response: aiResponse,
+      memory_state: memoryState,
+      check_duplicate: true,
+    });
+
+    const options = {
+      hostname: pyUrl.hostname,
+      port: pyUrl.port || 5001,
+      path: pyUrl.pathname,
+      method: "POST",
+      timeout: 10000,
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(payload),
+      },
+    };
+
+    const req = transport.request(options, (res) => {
+      const chunks = [];
+      res.on("data", (c) => chunks.push(c));
+      res.on("end", () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          console.log(`[py-bridge] Knowledge stored: ${body.filename || "(duplicate)"}`);
+        } catch (_) { /* ignore parse error */ }
+        resolve(true);
+      });
+    });
+
+    req.on("timeout", () => { req.destroy(); resolve(false); });
+    req.on("error", () => resolve(false));
+    req.write(payload);
+    req.end();
+  });
+}
+
+/**
+ * GET knowledge entries from the Python server.
+ * Returns an array, or null if the Python server is unavailable.
+ */
+async function pyGetKnowledge(limit = 50) {
+  return new Promise((resolve) => {
+    const pyUrl = new URL(`${PYTHON_KNOWLEDGE_SERVER}/knowledge?limit=${limit}`);
+    const transport = pyUrl.protocol === "https:" ? https : http;
+
+    const options = {
+      hostname: pyUrl.hostname,
+      port: pyUrl.port || 5001,
+      path: pyUrl.pathname + pyUrl.search,
+      method: "GET",
+      timeout: 8000,
+    };
+
+    const req = transport.request(options, (res) => {
+      const chunks = [];
+      res.on("data", (c) => chunks.push(c));
+      res.on("end", () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          resolve(body.files || []);
+        } catch (_) {
+          resolve(null);
+        }
+      });
+    });
+
+    req.on("timeout", () => { req.destroy(); resolve(null); });
+    req.on("error", () => resolve(null));
+    req.end();
+  });
+}
+
+/**
+ * Check if the Python knowledge server is reachable.
+ */
+async function pyHealthCheck() {
+  return new Promise((resolve) => {
+    const pyUrl = new URL(`${PYTHON_KNOWLEDGE_SERVER}/health`);
+    const transport = pyUrl.protocol === "https:" ? https : http;
+    const req = transport.request(
+      { hostname: pyUrl.hostname, port: pyUrl.port || 5001, path: "/health", method: "GET", timeout: 3000 },
+      (res) => { resolve(res.statusCode === 200); },
+    );
+    req.on("timeout", () => { req.destroy(); resolve(false); });
+    req.on("error", () => resolve(false));
+    req.end();
+  });
 }
 
 function sendJson(res, statusCode, payload) {
@@ -262,11 +366,14 @@ const server = http.createServer((req, res) => {
   }
 
   if (url.pathname === "/api/health" && req.method === "GET") {
+    const pyOk = await pyHealthCheck();
     sendJson(res, 200, {
       ok: true,
       service: "peakebot",
       llamaConfigured: Boolean(LLAMA_SERVER),
       llamaServer: LLAMA_SERVER,
+      pythonKnowledgeServer: PYTHON_KNOWLEDGE_SERVER,
+      pythonKnowledgeServerOnline: pyOk,
       timestamp: new Date().toISOString(),
     });
     return;
@@ -322,6 +429,10 @@ const server = http.createServer((req, res) => {
               user: text,
               ai: response,
               memory,
+            });
+            // Also forward to Python knowledge server (non-blocking, fire-and-forget)
+            pyStoreKnowledge(text, response, memory).then((ok) => {
+              if (ok) console.log("[py-bridge] Knowledge forwarded to Python server");
             });
           }
 
@@ -402,6 +513,19 @@ const server = http.createServer((req, res) => {
       sendJson(res, 200, { conversations });
     } catch (error) {
       sendJson(res, 500, { error: `Failed to read knowledge: ${error.message}` });
+    }
+    return;
+  }
+
+  // Proxy knowledge list from Python server
+  if (url.pathname === "/api/python-knowledge" && req.method === "GET") {
+    const limitParam = url.searchParams.get("limit");
+    const limit = Math.min(parseInt(limitParam || "50", 10) || 50, 200);
+    const files = await pyGetKnowledge(limit);
+    if (files === null) {
+      sendJson(res, 503, { error: "Python knowledge server unavailable" });
+    } else {
+      sendJson(res, 200, { files, count: files.length, source: "python-knowledge-server" });
     }
     return;
   }

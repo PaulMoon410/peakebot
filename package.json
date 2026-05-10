@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "knowledge": "python3 knowledge_server.py",
+    "start:all": "bash start.sh"
   },
   "keywords": ["ai", "chat", "memory", "llama"],
   "author": "",
