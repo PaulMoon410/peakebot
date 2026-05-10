@@ -166,7 +166,7 @@ def ftp_append_conversation(user_message: str, ai_response: str, memory_state: d
 def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict]:
     """
     Search conversations in today's daily file.
-    Uses word-overlap scoring with stop-word filtering and minimum threshold.
+    Uses keyword importance scoring with TF-IDF-like weighting.
     """
     # Common stop words to ignore in matching
     stop_words = {
@@ -175,29 +175,49 @@ def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict
         "that", "the", "to", "was", "what", "when", "where", "which",
         "who", "will", "with", "how", "many", "can", "do", "does",
         "did", "have", "has", "this", "these", "those", "you", "your",
-        "i", "me", "my", "we", "us", "our"
+        "i", "me", "my", "we", "us", "our", "just", "very", "more", "most",
+        "then", "than", "there", "here", "other", "such", "no", "not", "so"
     }
     
-    query_words = set(w for w in re.findall(r"\w+", query.lower()) if w not in stop_words and len(w) > 2)
-    if not query_words:
-        return []
-
     try:
         conversations = ftp_load_daily_knowledge()
+        
+        # Extract keywords from query (longer words, meaningful words weighted higher)
+        query_words_all = [w.lower() for w in re.findall(r"\w+", query.lower()) if w not in stop_words and len(w) > 2]
+        if not query_words_all:
+            return []
+        
+        # Prioritize longer, more specific keywords
+        query_keywords = {}
+        for word in query_words_all:
+            # Weight longer words more heavily (they're more specific)
+            weight = len(word) / 10.0 + 1.0
+            query_keywords[word] = query_keywords.get(word, 0) + weight
+        
         scored = []
         
         for conv in conversations:
             user_msg = conv.get("user_message", "")
             ai_msg = conv.get("ai_response", "")
-            combined_words = set(w for w in re.findall(r"\w+", (user_msg + " " + ai_msg).lower()) if w not in stop_words and len(w) > 2)
-            overlap = query_words.intersection(combined_words)
+            combined = (user_msg + " " + ai_msg).lower()
             
-            # Only consider matches with at least 2 significant word overlaps or >30% of query words
-            min_overlap = max(2, len(query_words) // 3)
-            if len(overlap) >= min_overlap:
-                # Score based on percentage of query words matched
-                score = len(overlap) / len(query_words)
-                scored.append((score, len(overlap), conv))
+            # Extract keywords from conversation (same method as query)
+            conv_words = [w.lower() for w in re.findall(r"\w+", combined) if w not in stop_words and len(w) > 2]
+            
+            # Calculate match score - emphasis on matching important keywords
+            score = 0.0
+            matches = []
+            for keyword, weight in query_keywords.items():
+                if keyword in conv_words:
+                    # Count frequency in conversation (up to 3x multiplier)
+                    freq = min(conv_words.count(keyword), 3)
+                    score += weight * freq
+                    matches.append(keyword)
+            
+            # Only include if at least 2 key query words matched or >40% of unique query keywords
+            min_matches = max(2, len(query_keywords) // 2)
+            if len(set(matches)) >= min_matches:
+                scored.append((score, len(set(matches)), conv))
         
         scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
         return [entry[2] for entry in scored[:max_results]]
@@ -215,13 +235,33 @@ def _word_set(text: str) -> set:
 
 
 def generate_memory_response(prompt: str, memory: dict, relevant: List[dict]) -> str:
-    """Generate a response from memory and relevant prior conversations."""
+    """Generate a response from memory and relevant prior conversations.
+    Can combine multiple relevant results for a more complete answer."""
     lower = prompt.strip().lower()
 
     if "what is today" in lower or "what's today" in lower or "what day is it" in lower:
         return datetime.now(timezone.utc).strftime("Today is %A, %B %d, %Y (UTC).")
 
     if relevant:
+        # Check if we have multiple complementary results to combine
+        if len(relevant) >= 2:
+            first = relevant[0]
+            second = relevant[1]
+            
+            first_q = first.get("user_message", "").strip()
+            first_a = first.get("ai_response", "").strip()
+            second_q = second.get("user_message", "").strip()
+            second_a = second.get("ai_response", "").strip()
+            
+            # If both are relevant and different enough, combine them
+            if first_a and second_a and first_a.lower() != second_a.lower():
+                return (
+                    "I found multiple related conversations in memory.\n\n"
+                    f"First: \"{first_q}\" → {first_a}\n\n"
+                    f"Also related: \"{second_q}\" → {second_a}"
+                )
+        
+        # Use single best result
         best = relevant[0]
         best_q = best.get("user_message", "").strip()
         best_a = best.get("ai_response", "").strip()
