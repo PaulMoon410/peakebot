@@ -37,7 +37,8 @@ PYTHON_PORT = int(os.environ.get("PYTHON_PORT", 5001))
 FTP_HOST = os.environ.get("FTP_HOST", "ftp.geocities.ws")
 FTP_USER = os.environ.get("FTP_USER", "PeakeCoin")
 FTP_PASSWORD = os.environ.get("FTP_PASSWORD", "Peake410")
-FTP_BRAIN_DIR = "/ai/brain"
+FTP_BRAIN_DIR = os.environ.get("FTP_BRAIN_DIR", "/ai/brain")
+SEARCH_MAX_FILES = int(os.environ.get("SEARCH_MAX_FILES", "0"))
 
 # In-memory cache to reduce FTP round-trips
 _cache: Dict[str, dict] = {}
@@ -146,7 +147,7 @@ def ftp_load_daily_knowledge() -> List[dict]:
         return []
 
 
-def ftp_load_knowledge_for_search(max_files: int = 200) -> List[dict]:
+def ftp_load_knowledge_for_search(max_files: Optional[int] = None) -> List[dict]:
     """Load knowledge entries from multiple FTP JSON files for recall search.
 
     Supports both formats:
@@ -163,7 +164,9 @@ def ftp_load_knowledge_for_search(max_files: int = 200) -> List[dict]:
 
         filenames = [name for name in ftp.nlst() if name.endswith(".json")]
         # Reverse sort gives newest-first for date-style names and still includes legacy names.
-        filenames = sorted(filenames, reverse=True)[:max_files]
+        filenames = sorted(filenames, reverse=True)
+        if max_files is not None and max_files > 0:
+            filenames = filenames[:max_files]
 
         for filename in filenames:
             buf = io.BytesIO()
@@ -183,6 +186,24 @@ def ftp_load_knowledge_for_search(max_files: int = 200) -> List[dict]:
                 for item in data:
                     if isinstance(item, dict):
                         item_copy = dict(item)
+                        # Expand searchable text using embedded memory_state facts.
+                        memory_state = item.get("memory_state", {})
+                        facts = memory_state.get("facts", []) if isinstance(memory_state, dict) else []
+                        fact_fragments: List[str] = []
+                        if isinstance(facts, list):
+                            for fact in facts:
+                                if not isinstance(fact, dict):
+                                    continue
+                                fact_text = str(fact.get("fact") or "").strip()
+                                context_text = str(fact.get("context") or "").strip()
+                                category = str(fact.get("category") or "").strip()
+                                if fact_text:
+                                    fact_fragments.append(" ".join(x for x in [category, fact_text, context_text] if x))
+
+                        if fact_fragments:
+                            base_user = str(item_copy.get("user_message") or "")
+                            item_copy["search_text"] = (base_user + " " + " ".join(fact_fragments)).strip()
+
                         item_copy["source_file"] = filename
                         conversations.append(item_copy)
 
@@ -292,7 +313,8 @@ def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict
     }
     
     try:
-        conversations = ftp_load_knowledge_for_search(max_files=200)
+        max_files = SEARCH_MAX_FILES if SEARCH_MAX_FILES > 0 else None
+        conversations = ftp_load_knowledge_for_search(max_files=max_files)
         
         # Extract keywords from query (longer words, meaningful words weighted higher)
         query_words_all = [w.lower() for w in re.findall(r"\w+", query.lower()) if w not in stop_words and len(w) > 2]
@@ -309,7 +331,7 @@ def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict
         scored = []
         
         for conv in conversations:
-            user_msg = conv.get("user_message", "")
+            user_msg = conv.get("search_text", conv.get("user_message", ""))
             ai_msg = conv.get("ai_response", "")
 
             # Skip responses that are known fallback/error/recursive templates.
@@ -517,12 +539,20 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
 
     def _send(self, status: int, body: dict) -> None:
         encoded = json.dumps(body, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        for k, v in _cors_headers().items():
-            self.send_header(k, v)
-        self.send_header("Content-Length", str(len(encoded)))
-        self.end_headers()
-        self.wfile.write(encoded)
+        try:
+            self.send_response(status)
+            for k, v in _cors_headers().items():
+                self.send_header(k, v)
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # Client disconnected before response was fully written.
+            return
+        except OSError as exc:
+            # Avoid noisy stack traces for transient socket shutdown races.
+            print(f"[knowledge_server] WARN: response write failed: {exc}")
+            return
 
     def _read_body(self) -> Optional[dict]:
         length = int(self.headers.get("Content-Length", 0))
