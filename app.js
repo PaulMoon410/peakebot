@@ -1,8 +1,6 @@
 const IPFS_GATEWAY = "https://ipfs.io/ipfs/";
-const LLAMA_SERVER = "http://74.208.146.37:8080";
 const RENDER_SERVER = "https://peakebot.onrender.com";
 const CONNECTION_CHECK_INTERVAL_MS = 15000;
-const DIRECT_LLAMA_ALLOWED = window.location.protocol === "http:" || LLAMA_SERVER.startsWith("https://");
 
 const elements = {
   chatLog: document.querySelector("#chat-log"),
@@ -38,14 +36,14 @@ const defaultMemory = () => ({
 const state = {
   memory: defaultMemory(),
   serverAvailable: true,
-  llamaConnected: false,
+  pythonConnected: false,
   nodeConnected: false,
   lastFtpStatus: "",
   connectionCheckTimer: null,
 };
 
 function hasAiConnection() {
-  return state.llamaConnected || state.nodeConnected;
+  return state.nodeConnected;
 }
 
 function updateChatAvailability() {
@@ -54,7 +52,7 @@ function updateChatAvailability() {
   if (elements.chatInput) {
     elements.chatInput.disabled = !online;
     if (!online) {
-      elements.chatInput.placeholder = "Waiting for AI connection (Llama or Render Node)...";
+      elements.chatInput.placeholder = "Waiting for Python memory engine connection...";
     }
   }
 
@@ -86,17 +84,13 @@ function setConnectionStatus() {
   let text = "Offline";
   let bg = "#3a2a2a";
   
-  if (state.llamaConnected && state.nodeConnected) {
+  if (state.pythonConnected && state.nodeConnected) {
     icon = "🟢";
-    text = "Connected (Llama + Node Server)";
+    text = "Connected (Python Memory + Node Server)";
     bg = "#2a3a2a";
-  } else if (state.llamaConnected) {
-    icon = "🟡";
-    text = "Connected (Llama Direct)";
-    bg = "#3a3a2a";
   } else if (state.nodeConnected) {
     icon = "🟡";
-    text = "Connected (Node Server)";
+    text = "Connected (Node Proxy Only)";
     bg = "#3a3a2a";
   }
   
@@ -106,13 +100,8 @@ function setConnectionStatus() {
   }
 
   if (elements.llamaStatus) {
-    if (!DIRECT_LLAMA_ALLOWED) {
-      elements.llamaStatus.textContent = "Llama: Blocked on HTTPS (mixed content)";
-      elements.llamaStatus.className = "service-indicator offline";
-    } else {
-      elements.llamaStatus.textContent = state.llamaConnected ? "Llama: Connected" : "Llama: Offline";
-      elements.llamaStatus.className = `service-indicator ${state.llamaConnected ? "online" : "offline"}`;
-    }
+    elements.llamaStatus.textContent = state.pythonConnected ? "Python Engine: Connected" : "Python Engine: Offline";
+    elements.llamaStatus.className = `service-indicator ${state.pythonConnected ? "online" : "offline"}`;
   }
 
   if (elements.nodeStatus) {
@@ -143,7 +132,7 @@ function renderMemory() {
   elements.memoryPreview.textContent = JSON.stringify(state.memory, null, 2);
   const stats = [
     `Storage: ${state.nodeConnected ? "Synced to Render server" : "Runtime only (server offline)"}`,
-    `AI Server: ${LLAMA_SERVER}`,
+    `Engine: Python memory retrieval`,
     `Facts: ${state.memory.facts.length}`,
     `Notes: ${state.memory.notes.length}`,
     `Conversations: ${state.memory.conversations.length}`,
@@ -302,45 +291,7 @@ async function generateReply(prompt) {
   }
 
   try {
-    const conversationHistory = state.memory.conversations.slice(-10).map((conv) => ([
-      { role: "user", content: conv.user },
-      { role: "assistant", content: conv.ai },
-    ])).flat();
-
-    let response;
-    
-    // Try direct Llama only when browser security allows it.
-    if (DIRECT_LLAMA_ALLOWED && state.llamaConnected) {
-      try {
-        response = await fetch(`${LLAMA_SERVER}/v1/chat/completions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messages: [
-              ...conversationHistory,
-              { role: "user", content: text },
-            ],
-            model: "qwen2.5",
-            stream: false,
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.choices && data.choices[0] && data.choices[0].message) {
-            return data.choices[0].message.content;
-          }
-        } else {
-          state.llamaConnected = false;
-          setConnectionStatus();
-        }
-      } catch (error) {
-        state.llamaConnected = false;
-        setConnectionStatus();
-      }
-    }
-    
-    // Fall back to Render Node server
+    // Chat runs through the Render Node proxy to the Python memory engine.
     if (state.nodeConnected) {
       try {
         const nodeResponse = await fetch(`${RENDER_SERVER}/api/chat`, {
@@ -387,7 +338,7 @@ async function generateReply(prompt) {
       }
     }
     
-    return "AI service unavailable. Please check connection status.";
+    return "Python memory engine unavailable. Please check connection status.";
   } catch (error) {
     return `Error: ${error.message}`;
   }
@@ -407,7 +358,7 @@ async function handleChatSubmit(event) {
   event.preventDefault();
 
   if (!hasAiConnection()) {
-    setStatus("AI is offline. Waiting for Llama or Render Node connection.", true);
+    setStatus("AI is offline. Waiting for Python memory engine connection.", true);
     await checkConnections();
     if (!hasAiConnection()) {
       return;
@@ -472,39 +423,26 @@ function handleFileImport(event) {
 }
 
 function seedWelcomeMessage() {
-  addMessage("ai", "Hello! I'm powered by Qwen AI and store memories in your browser. Ask me anything, remember facts, save notes, or load JSON memory.");
+  addMessage("ai", "Hello! I use a Python memory engine with FTP-backed recall. Ask me anything, remember facts, save notes, or load JSON memory.");
 }
 
 async function checkConnections() {
-  // Direct Llama checks are blocked by browser mixed-content policy on HTTPS pages.
-  if (!DIRECT_LLAMA_ALLOWED) {
-    state.llamaConnected = false;
-  } else {
-    try {
-      const response = await fetch(`${LLAMA_SERVER}/v1/chat/completions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [{ role: "user", content: "test" }],
-          model: "qwen2.5",
-          stream: false,
-        }),
-      });
-      state.llamaConnected = response.ok;
-    } catch {
-      state.llamaConnected = false;
-    }
-  }
-  
-  // Check Render Node server health independent of model status.
+  // Check Render Node server and Python engine status.
   try {
     const response = await fetch(`${RENDER_SERVER}/api/health`, {
       method: "GET",
       cache: "no-store",
     });
     state.nodeConnected = response.ok;
+    if (response.ok) {
+      const health = await response.json();
+      state.pythonConnected = Boolean(health.pythonKnowledgeServerOnline);
+    } else {
+      state.pythonConnected = false;
+    }
   } catch {
     state.nodeConnected = false;
+    state.pythonConnected = false;
   }
 
   setConnectionStatus();

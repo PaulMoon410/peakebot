@@ -14,22 +14,19 @@ import os
 import json
 import ftplib
 import io
-import hashlib
 import re
 import threading
-import urllib.request
-import urllib.error
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Dict, List, Optional
 from urllib.parse import urlparse, parse_qs
 
 # ---------------------------------------------------------------------------
-# Llama / AI configuration
+# Python memory engine configuration
 # ---------------------------------------------------------------------------
 
-LLAMA_SERVER = os.environ.get("LLAMA_SERVER", "http://74.208.146.37:8080")
-LLAMA_MODEL = os.environ.get("LLAMA_MODEL", "qwen2.5")
+KNOWLEDGE_ENGINE = os.environ.get("KNOWLEDGE_ENGINE", "memory-retrieval")
+ENABLE_CROSS_VERIFY = os.environ.get("ENABLE_CROSS_VERIFY", "true").lower() != "false"
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -194,44 +191,83 @@ def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict
         return []
 
 
-
 # ---------------------------------------------------------------------------
-# Llama AI helpers
+# Memory response helpers
 # ---------------------------------------------------------------------------
 
-def call_llama(messages: list, timeout: int = 25) -> str:
-    """
-    POST to the Llama /v1/chat/completions endpoint.
-    Returns the assistant message string, or raises on failure.
-    """
-    payload = json.dumps({
-        "messages": messages,
-        "model": LLAMA_MODEL,
-        "stream": False,
-    }).encode("utf-8")
+def _word_set(text: str) -> set:
+    return set(re.findall(r"\w+", text.lower()))
 
-    req = urllib.request.Request(
-        f"{LLAMA_SERVER}/v1/chat/completions",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
+
+def generate_memory_response(prompt: str, memory: dict, relevant: List[dict]) -> str:
+    """Generate a response from memory and relevant prior conversations."""
+    lower = prompt.strip().lower()
+
+    if "what is today" in lower or "what's today" in lower or "what day is it" in lower:
+        return datetime.now(timezone.utc).strftime("Today is %A, %B %d, %Y (UTC).")
+
+    if relevant:
+        best = relevant[0]
+        best_q = best.get("user_message", "").strip()
+        best_a = best.get("ai_response", "").strip()
+
+        if best_a:
+            if best_q and best_q.lower() != lower:
+                return (
+                    "I found a closely related conversation in memory.\n\n"
+                    f"Closest prior question: \"{best_q}\"\n"
+                    f"Closest prior answer: {best_a}"
+                )
+            return best_a
+
+    facts = memory.get("facts") if isinstance(memory, dict) else []
+    if isinstance(facts, list) and facts:
+        latest_facts = [
+            f"{item.get('subject', '').strip()} = {item.get('value', '').strip()}"
+            for item in facts[-3:]
+            if item.get("subject") and item.get("value")
+        ]
+        if latest_facts:
+            fact_list = "; ".join(latest_facts)
+            return (
+                "I do not have a close prior conversation match yet, "
+                f"but I remember these recent facts: {fact_list}."
+            )
+
+    return (
+        "I do not have a close prior conversation for that yet. "
+        "Tell me details and I will store this for future recall."
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-
-    try:
-        return data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError):
-        raise ValueError(f"Unexpected Llama response shape: {data}")
 
 
-def llama_health() -> bool:
-    """Return True if Llama server responds to a minimal probe."""
-    try:
-        call_llama([{"role": "user", "content": "ping"}], timeout=5)
-        return True
-    except Exception:
-        return False
+def verify_response(prompt: str, response: str, relevant: List[dict]) -> dict:
+    """Basic cross-verification step to score consistency with relevant memory."""
+    issues: List[str] = []
+    score = 1.0
+
+    if not response.strip():
+        issues.append("Empty response")
+        score -= 0.8
+
+    if relevant:
+        best = relevant[0].get("ai_response", "")
+        if best:
+            overlap = len(_word_set(best).intersection(_word_set(response)))
+            if overlap < 2:
+                issues.append("Low overlap with closest stored answer")
+                score -= 0.45
+
+    if len(response) > 1400:
+        issues.append("Response is unusually long")
+        score -= 0.1
+
+    score = max(0.0, min(1.0, score))
+    return {
+        "enabled": ENABLE_CROSS_VERIFY,
+        "passed": score >= 0.35,
+        "score": round(score, 2),
+        "issues": issues,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -326,8 +362,9 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             self._send(200, {
                 "ok": True,
                 "service": "knowledge-server",
+                "engine": KNOWLEDGE_ENGINE,
+                "cross_verify": ENABLE_CROSS_VERIFY,
                 "ftp_host": FTP_HOST,
-                "llama_server": LLAMA_SERVER,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             })
             return
@@ -472,49 +509,22 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 self._send(400, {"error": "Field 'prompt' is required"})
                 return
 
-            # Build conversation history from memory (last 10 turns)
-            history = []
-            for conv in (memory.get("conversations") or [])[-10:]:
-                history.append({"role": "user", "content": conv.get("user", "")})
-                history.append({"role": "assistant", "content": conv.get("ai", "")})
-
             # Search FTP knowledge base for relevant past exchanges
             relevant = ftp_search_relevant_knowledge(prompt, max_results=5)
-            knowledge_context = ""
-            if relevant:
-                snippets = []
-                for item in relevant:
-                    u = item.get("user_message", "").strip()
-                    a = item.get("ai_response", "").strip()
-                    if u and a:
-                        snippets.append(f"Q: {u}\nA: {a}")
-                if snippets:
-                    knowledge_context = (
-                        "The following are relevant past conversations you have had. "
-                        "Use them to inform your answer:\n\n"
-                        + "\n\n".join(snippets)
-                        + "\n\n"
-                    )
+            ai_response = generate_memory_response(prompt, memory, relevant)
+            verification = verify_response(prompt, ai_response, relevant) if ENABLE_CROSS_VERIFY else {
+                "enabled": False,
+                "passed": True,
+                "score": 1.0,
+                "issues": [],
+            }
 
-            # Build system prompt with injected knowledge
-            system_content = (
-                "You are a helpful AI assistant with a persistent memory stored on FTP. "
-                "You learn from every conversation and become wiser over time.\n\n"
-                + knowledge_context
-            ).strip()
-
-            messages = (
-                [{"role": "system", "content": system_content}]
-                + history
-                + [{"role": "user", "content": prompt}]
-            )
-
-            try:
-                ai_response = call_llama(messages)
-            except Exception as exc:
-                print(f"[knowledge_server] Llama error: {exc}")
-                self._send(502, {"error": f"Llama server error: {exc}"})
-                return
+            # If verification fails and we have a stronger prior answer, use it directly.
+            if not verification.get("passed", True) and relevant:
+                fallback = relevant[0].get("ai_response", "").strip()
+                if fallback:
+                    ai_response = fallback
+                    verification = verify_response(prompt, ai_response, relevant) if ENABLE_CROSS_VERIFY else verification
 
             # Store the conversation to today's daily file on FTP
             ftp_saved = False
@@ -535,7 +545,9 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
 
             self._send(200, {
                 "response": ai_response,
-                "source": "python-knowledge-server",
+                "source": "python-memory-engine",
+                "relevant_count": len(relevant),
+                "verification": verification,
                 "ftp_saved": ftp_saved,
                 "daily_file": daily_file,
                 "ftp_error": ftp_error,
@@ -553,7 +565,7 @@ if __name__ == "__main__":
     server = HTTPServer(("0.0.0.0", PYTHON_PORT), KnowledgeHandler)
     print(f"[knowledge_server] Python knowledge server running on port {PYTHON_PORT}")
     print(f"[knowledge_server] FTP host: {FTP_HOST}  |  brain dir: {FTP_BRAIN_DIR}")
-    print(f"[knowledge_server] Llama: {LLAMA_SERVER}")
+    print(f"[knowledge_server] Engine: {KNOWLEDGE_ENGINE}  |  Cross verify: {ENABLE_CROSS_VERIFY}")
     print(f"[knowledge_server] Endpoints:")
     print(f"  GET    /health")
     print(f"  GET    /memory")

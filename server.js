@@ -4,20 +4,11 @@ const fs = require("fs");
 const path = require("path");
 const { URL } = require("url");
 const { spawn } = require("child_process");
-const Client = require("basic-ftp").Client;
 
 const PORT = process.env.PORT || 3000;
-const LLAMA_SERVER = process.env.LLAMA_SERVER || "http://74.208.146.37:8080";
 const PYTHON_KNOWLEDGE_SERVER = process.env.PYTHON_KNOWLEDGE_SERVER || "http://localhost:5001";
 const PYTHON_PORT = parseInt(process.env.PYTHON_PORT || "5001", 10);
 const START_PYTHON_SERVER = process.env.START_PYTHON_SERVER !== "false";
-
-// FTP Configuration from environment variables
-const FTP_CONFIG = {
-  host: process.env.FTP_HOST || "ftp.geocities.ws",
-  user: process.env.FTP_USER || "PeakeCoin",
-  password: process.env.FTP_PASSWORD || "Peake410",
-};
 
 const DATA_DIR = path.join(__dirname, "data");
 const MEMORY_FILE = path.join(DATA_DIR, "memory.json");
@@ -91,58 +82,6 @@ function saveKnowledge(conversation) {
 // ---------------------------------------------------------------------------
 
 /**
- * POST a knowledge entry to the Python server.
- * Returns true on success, false if the Python server is unavailable.
- */
-async function pyStoreKnowledge(userMessage, aiResponse, memoryState) {
-  return new Promise((resolve) => {
-    const pyUrl = new URL(`${PYTHON_KNOWLEDGE_SERVER}/knowledge`);
-    const transport = pyUrl.protocol === "https:" ? https : http;
-    const payload = JSON.stringify({
-      user_message: userMessage,
-      ai_response: aiResponse,
-      memory_state: memoryState,
-      check_duplicate: true,
-    });
-
-    const options = {
-      hostname: pyUrl.hostname,
-      port: pyUrl.port || 5001,
-      path: pyUrl.pathname,
-      method: "POST",
-      timeout: 10000,
-      headers: {
-        "Content-Type": "application/json",
-        "Content-Length": Buffer.byteLength(payload),
-      },
-    };
-
-    const req = transport.request(options, (res) => {
-      const chunks = [];
-      res.on("data", (c) => chunks.push(c));
-      res.on("end", () => {
-        try {
-          const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-          const ok = res.statusCode >= 200 && res.statusCode < 300 && body.ok !== false;
-          if (ok) {
-            console.log(`[py-bridge] Knowledge stored: ${body.daily_file || body.filename || "(ok)"}`);
-          } else {
-            console.error(`[py-bridge] Knowledge store failed: ${body.error || `HTTP ${res.statusCode}`}`);
-          }
-          resolve(ok);
-        } catch (_) { /* ignore parse error */ }
-        resolve(res.statusCode >= 200 && res.statusCode < 300);
-      });
-    });
-
-    req.on("timeout", () => { req.destroy(); resolve(false); });
-    req.on("error", () => resolve(false));
-    req.write(payload);
-    req.end();
-  });
-}
-
-/**
  * GET knowledge entries from the Python server.
  * Returns an array, or null if the Python server is unavailable.
  */
@@ -174,43 +113,6 @@ async function pyGetKnowledge(limit = 50) {
 
     req.on("timeout", () => { req.destroy(); resolve(null); });
     req.on("error", () => resolve(null));
-    req.end();
-  });
-}
-
-/**
- * Search past knowledge via Python server.
- * Returns matching entries array (may be empty).
- */
-async function pySearchKnowledge(query, limit = 5) {
-  return new Promise((resolve) => {
-    const encoded = encodeURIComponent(query);
-    const pyUrl = new URL(`${PYTHON_KNOWLEDGE_SERVER}/knowledge/search?q=${encoded}&limit=${limit}`);
-    const transport = pyUrl.protocol === "https:" ? https : http;
-
-    const options = {
-      hostname: pyUrl.hostname,
-      port: pyUrl.port || 5001,
-      path: pyUrl.pathname + pyUrl.search,
-      method: "GET",
-      timeout: 8000,
-    };
-
-    const req = transport.request(options, (res) => {
-      const chunks = [];
-      res.on("data", (c) => chunks.push(c));
-      res.on("end", () => {
-        try {
-          const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-          resolve(body.results || []);
-        } catch (_) {
-          resolve([]);
-        }
-      });
-    });
-
-    req.on("timeout", () => { req.destroy(); resolve([]); });
-    req.on("error", () => resolve([]));
     req.end();
   });
 }
@@ -281,144 +183,6 @@ function serveStatic(req, res, pathname) {
   });
 }
 
-async function connectFTP() {
-  const client = new Client();
-  await client.access(FTP_CONFIG);
-  return client;
-}
-
-async function isDuplicateResponse(response) {
-  try {
-    const client = await connectFTP();
-    const files = await client.list("/ai/brain");
-    
-    for (const file of files) {
-      if (file.isFile && file.name.endsWith(".json")) {
-        const data = await client.downloadToString(`/ai/brain/${file.name}`);
-        const json = JSON.parse(data);
-        if (json.ai_response === response) {
-          client.close();
-          return true;
-        }
-      }
-    }
-    client.close();
-    return false;
-  } catch (error) {
-    console.error("Error checking for duplicates:", error.message);
-    return false;
-  }
-}
-
-async function saveToBrain(userMessage, aiResponse, memory) {
-  try {
-    const client = await connectFTP();
-    
-    // Ensure ai/brain directory exists
-    try {
-      await client.cd("/ai/brain");
-    } catch {
-      await client.ensureDir("/ai/brain");
-    }
-
-    // Generate today's daily filename (e.g., 2026-05-10.json)
-    const now = new Date();
-    const dateStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
-    const dailyFilename = `/ai/brain/${dateStr}.json`;
-    
-    // Load existing daily file or start with empty array
-    let conversations = [];
-    try {
-      const existing = await client.downloadToString(dailyFilename);
-      conversations = JSON.parse(existing) || [];
-      if (!Array.isArray(conversations)) conversations = [];
-    } catch (err) {
-      // File doesn't exist yet, start fresh
-      conversations = [];
-    }
-
-    // Append new conversation
-    conversations.push({
-      timestamp: new Date().toISOString(),
-      user_message: userMessage,
-      ai_response: aiResponse,
-      memory_state: memory,
-    });
-
-    // Upload back to FTP
-    const jsonData = JSON.stringify(conversations, null, 2);
-    await client.uploadFrom(Buffer.from(jsonData), dailyFilename);
-    
-    client.close();
-    console.log(`[main] Appended to FTP: ${dailyFilename} (${conversations.length} total conversations today)`);
-    return {
-      ok: true,
-      dailyFile: dailyFilename,
-      totalConversations: conversations.length,
-    };
-  } catch (error) {
-    console.error("[main] Error saving to FTP:", error.message);
-    // Fall back to local save
-    return {
-      ok: false,
-      error: error.message,
-    };
-  }
-}
-
-async function callLlamaServer(messages) {
-  return new Promise((resolve, reject) => {
-    const llamaUrl = new URL(`${LLAMA_SERVER}/v1/chat/completions`);
-    const transport = llamaUrl.protocol === "https:" ? https : http;
-    const payload = JSON.stringify({
-      messages,
-      model: "qwen2.5",
-      stream: false,
-    });
-
-    const options = {
-      hostname: llamaUrl.hostname,
-      port: llamaUrl.port || 8080,
-      path: llamaUrl.pathname + llamaUrl.search,
-      method: "POST",
-      timeout: 20000,
-      headers: {
-        "Content-Type": "application/json",
-        "Content-Length": Buffer.byteLength(payload),
-      },
-    };
-
-    const proxyReq = transport.request(options, (proxyRes) => {
-      const chunks = [];
-      proxyRes.on("data", (chunk) => chunks.push(chunk));
-      proxyRes.on("end", () => {
-        try {
-          const body = Buffer.concat(chunks).toString("utf8");
-          if (proxyRes.statusCode < 200 || proxyRes.statusCode >= 300) {
-            reject(new Error(`Upstream Llama returned ${proxyRes.statusCode}: ${body.slice(0, 180)}`));
-            return;
-          }
-          const data = JSON.parse(body);
-          if (data.choices && data.choices[0] && data.choices[0].message) {
-            resolve(data.choices[0].message.content);
-          } else {
-            reject(new Error("Invalid response from Llama server"));
-          }
-        } catch (error) {
-          reject(error);
-        }
-      });
-    });
-
-    proxyReq.on("timeout", () => {
-      proxyReq.destroy(new Error("Llama upstream timed out"));
-    });
-    proxyReq.on("error", reject);
-    proxyReq.write(payload);
-    proxyReq.end();
-  });
-}
-
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
@@ -438,8 +202,7 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 200, {
       ok: true,
       service: "peakebot",
-      llamaConfigured: Boolean(LLAMA_SERVER),
-      llamaServer: LLAMA_SERVER,
+      mode: "python-memory-engine",
       pythonKnowledgeServer: PYTHON_KNOWLEDGE_SERVER,
       pythonKnowledgeServerOnline: pyOk,
       timestamp: new Date().toISOString(),
@@ -475,168 +238,74 @@ const server = http.createServer(async (req, res) => {
         const text = payload.prompt.trim();
         const memory = payload.memory || {};
 
-        // Try to call Llama server
         try {
-          const conversationHistory = (memory.conversations || []).slice(-10).map((conv) => [
-            { role: "user", content: conv.user },
-            { role: "assistant", content: conv.ai },
-          ]).flat();
+          const pyUrl = new URL(`${PYTHON_KNOWLEDGE_SERVER}/chat`);
+          const pyTransport = pyUrl.protocol === "https:" ? https : http;
+          const pyPayload = JSON.stringify({ prompt: text, memory });
 
-          // Fetch relevant past knowledge from Python server to augment context
-          let knowledgeContext = "";
-          try {
-            const relevant = await pySearchKnowledge(text, 5);
-            if (relevant.length > 0) {
-              const snippets = relevant
-                .filter((item) => item.user_message && item.ai_response)
-                .map((item) => `Q: ${item.user_message.trim()}\nA: ${item.ai_response.trim()}`)
-                .join("\n\n");
-              if (snippets) {
-                knowledgeContext =
-                  "The following are relevant past conversations you have had. Use them to inform your answer:\n\n"
-                  + snippets + "\n\n";
-              }
-            }
-          } catch (_) { /* non-critical */ }
+          const pyResponse = await new Promise((resolve, reject) => {
+            const options = {
+              hostname: pyUrl.hostname,
+              port: pyUrl.port || 5001,
+              path: pyUrl.pathname,
+              method: "POST",
+              timeout: 30000,
+              headers: {
+                "Content-Type": "application/json",
+                "Content-Length": Buffer.byteLength(pyPayload),
+              },
+            };
 
-          const systemMessage = {
-            role: "system",
-            content: (
-              "You are a helpful AI assistant with a persistent memory stored on FTP. "
-              + "You learn from every conversation and become wiser over time.\n\n"
-              + knowledgeContext
-            ).trim(),
-          };
-
-          const response = await callLlamaServer([
-            systemMessage,
-            ...conversationHistory,
-            { role: "user", content: text },
-          ]);
-
-          // Check for duplicate response
-          const isDuplicate = await isDuplicateResponse(response);
-          let ftpStatus = {
-            ok: false,
-            skipped: false,
-            reason: "not-attempted",
-          };
-          
-          if (!isDuplicate) {
-            // Save to FTP brain and local knowledge
-            const ftpMainResult = await saveToBrain(text, response, memory);
-            try {
-              saveKnowledge({
-                user: text,
-                ai: response,
-                memory,
+            const pyReq = pyTransport.request(options, (pyRes) => {
+              const pyChunks = [];
+              pyRes.on("data", (c) => pyChunks.push(c));
+              pyRes.on("end", () => {
+                const body = Buffer.concat(pyChunks).toString("utf8");
+                try {
+                  resolve({
+                    status: pyRes.statusCode,
+                    data: JSON.parse(body),
+                  });
+                } catch {
+                  reject(new Error(`Invalid JSON from Python: ${body.slice(0, 140)}`));
+                }
               });
-            } catch (localSaveError) {
-              console.error("[main] Local knowledge save failed:", localSaveError.message);
-            }
+            });
 
-            const pyBridgeOk = await pyStoreKnowledge(text, response, memory);
-            ftpStatus = {
-              ok: Boolean(ftpMainResult.ok),
-              skipped: false,
-              dailyFile: ftpMainResult.dailyFile || null,
-              totalConversations: ftpMainResult.totalConversations || null,
-              pythonBridgeOk: pyBridgeOk,
-              error: ftpMainResult.error || null,
-            };
-            if (ftpStatus.ok) {
-              console.log(`[main] FTP save success: ${ftpStatus.dailyFile}`);
-            } else {
-              console.error(`[main] FTP save failed: ${ftpStatus.error || "unknown error"}`);
-            }
-          } else {
-            ftpStatus = {
-              ok: true,
-              skipped: true,
-              reason: "duplicate-response",
-            };
-            console.log("[main] FTP save skipped (duplicate AI response)");
+            pyReq.on("timeout", () => {
+              pyReq.destroy();
+              reject(new Error("Python server timeout"));
+            });
+            pyReq.on("error", reject);
+            pyReq.write(pyPayload);
+            pyReq.end();
+          });
+
+          if (pyResponse.status !== 200) {
+            throw new Error(`Python returned ${pyResponse.status}: ${pyResponse.data.error || "unknown error"}`);
+          }
+
+          if (!pyResponse.data.response) {
+            throw new Error("No response field from Python");
           }
 
           sendJson(res, 200, {
-            response,
-            source: "llama",
-            duplicate: isDuplicate,
-            ftp: ftpStatus,
+            response: pyResponse.data.response,
+            source: "python-memory-engine",
+            relevantCount: pyResponse.data.relevant_count || 0,
+            verification: pyResponse.data.verification || null,
+            ftp: {
+              ok: pyResponse.data.ftp_saved === true,
+              skipped: false,
+              dailyFile: pyResponse.data.daily_file || null,
+              error: pyResponse.data.ftp_error || null,
+            },
           });
-        } catch (llamaError) {
-          // If Llama fails, try Python's /chat endpoint as fallback
-          console.log(`[main] Llama failed: ${llamaError.message}, trying Python fallback...`);
-          try {
-            const pyUrl = new URL(`${PYTHON_KNOWLEDGE_SERVER}/chat`);
-            const pyTransport = pyUrl.protocol === "https:" ? https : http;
-            const pyPayload = JSON.stringify({ prompt: text, memory });
-
-            const pyResponse = await new Promise((resolve, reject) => {
-              const options = {
-                hostname: pyUrl.hostname,
-                port: pyUrl.port || 5001,
-                path: pyUrl.pathname,
-                method: "POST",
-                timeout: 30000,
-                headers: {
-                  "Content-Type": "application/json",
-                  "Content-Length": Buffer.byteLength(pyPayload),
-                },
-              };
-
-              const pyReq = pyTransport.request(options, (res) => {
-                const chunks = [];
-                res.on("data", (c) => chunks.push(c));
-                res.on("end", () => {
-                  const body = Buffer.concat(chunks).toString("utf8");
-                  try {
-                    resolve({
-                      status: res.statusCode,
-                      data: JSON.parse(body),
-                    });
-                  } catch {
-                    reject(new Error(`Invalid JSON from Python: ${body.slice(0, 100)}`));
-                  }
-                });
-              });
-
-              pyReq.on("timeout", () => {
-                pyReq.destroy();
-                reject(new Error("Python server timeout"));
-              });
-              pyReq.on("error", reject);
-              pyReq.write(pyPayload);
-              pyReq.end();
-            });
-
-            // Check if Python succeeded
-            if (pyResponse.status !== 200) {
-              throw new Error(`Python returned ${pyResponse.status}: ${pyResponse.data.error || "unknown error"}`);
-            }
-
-            if (!pyResponse.data.response) {
-              throw new Error("No response field from Python");
-            }
-
-            sendJson(res, 200, {
-              response: pyResponse.data.response,
-              source: "python-fallback",
-              filename: pyResponse.data.filename,
-              ftp: {
-                ok: pyResponse.data.ftp_saved === true,
-                skipped: false,
-                dailyFile: pyResponse.data.daily_file || null,
-                error: pyResponse.data.ftp_error || null,
-              },
-            });
-          } catch (pythonError) {
-            // Both failed, return error
-            console.error(`[main] Both Llama and Python failed:`, llamaError.message, pythonError.message);
-            sendJson(res, 502, {
-              error: `AI unavailable: Llama (${llamaError.message}) and Python (${pythonError.message}) both failed`,
-            });
-          }
+        } catch (pythonError) {
+          console.error("[main] Python chat failed:", pythonError.message);
+          sendJson(res, 502, {
+            error: `AI unavailable: Python memory engine failed (${pythonError.message})`,
+          });
         }
       } catch (error) {
         sendJson(res, 400, { error: `Invalid JSON: ${error.message}` });
@@ -760,7 +429,6 @@ function startPythonServer() {
         FTP_HOST: process.env.FTP_HOST || "ftp.geocities.ws",
         FTP_USER: process.env.FTP_USER || "PeakeCoin",
         FTP_PASSWORD: process.env.FTP_PASSWORD || "Peake410",
-        LLAMA_SERVER: LLAMA_SERVER,
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -818,7 +486,7 @@ function stopPythonServer() {
   server.listen(PORT, () => {
     ensureDirectories();
     console.log(`[main] AI Memory server running at http://localhost:${PORT}`);
-    console.log(`[main] Llama server: ${LLAMA_SERVER}`);
+    console.log("[main] Mode: Python memory engine only");
     console.log(`[main] Python knowledge server: ${PYTHON_KNOWLEDGE_SERVER}`);
     console.log(`[main] Knowledge saved to: ${KNOWLEDGE_DIR}`);
   });
