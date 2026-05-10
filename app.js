@@ -19,10 +19,6 @@ const elements = {
   loadUrl: document.querySelector("#load-url"),
   loadUrlButton: document.querySelector("#load-url-button"),
   importFile: document.querySelector("#import-file"),
-  adminQuestion: document.querySelector("#admin-question"),
-  adminAnswer: document.querySelector("#admin-answer"),
-  adminLearnButton: document.querySelector("#admin-learn-button"),
-  adminStatus: document.querySelector("#admin-status"),
 };
 
 const defaultMemory = () => ({
@@ -459,64 +455,8 @@ function handleFileImport(event) {
   reader.readAsText(file);
 }
 
-async function handleAdminLearn() {
-  const question = elements.adminQuestion?.value?.trim() || "";
-  const answer = elements.adminAnswer?.value?.trim() || "";
-
-  if (!question || !answer) {
-    if (elements.adminStatus) {
-      elements.adminStatus.textContent = "Please enter both question and answer.";
-      elements.adminStatus.style.color = "#ff9aa9";
-    }
-    return;
-  }
-
-  if (elements.adminLearnButton) elements.adminLearnButton.disabled = true;
-  if (elements.adminStatus) elements.adminStatus.textContent = "Learning...";
-
-  try {
-    const response = await fetch(`${RENDER_SERVER}/api/knowledge`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user_message: question,
-        ai_response: answer,
-        memory_state: state.memory,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (response.ok && data.ok) {
-      const dailyFile = data.daily_file || "daily file";
-      if (elements.adminStatus) {
-        elements.adminStatus.textContent = `✓ Learned! Stored to ${dailyFile}.`;
-        elements.adminStatus.style.color = "#9be8b4";
-      }
-      console.log(`[admin] Knowledge learned: ${dailyFile}`);
-      if (elements.adminQuestion) elements.adminQuestion.value = "";
-      if (elements.adminAnswer) elements.adminAnswer.value = "";
-    } else {
-      const errorMsg = data.error || "Unknown error";
-      if (elements.adminStatus) {
-        elements.adminStatus.textContent = `✗ Failed: ${errorMsg}`;
-        elements.adminStatus.style.color = "#ff9aa9";
-      }
-      console.error(`[admin] Learn failed: ${errorMsg}`);
-    }
-  } catch (error) {
-    if (elements.adminStatus) {
-      elements.adminStatus.textContent = `✗ Error: ${error.message}`;
-      elements.adminStatus.style.color = "#ff9aa9";
-    }
-    console.error(`[admin] Learn error: ${error.message}`);
-  } finally {
-    if (elements.adminLearnButton) elements.adminLearnButton.disabled = false;
-  }
-}
-
 function seedWelcomeMessage() {
-  addMessage("ai", "Hello! I use a Python memory engine with FTP-backed recall. Ask me anything, remember facts, save notes, or use the admin panel to force-teach me new knowledge.");
+  addMessage("ai", "Hello! I use a Python memory engine with FTP-backed recall. Ask me anything, remember facts, or save notes.");
 }
 
 async function checkConnections() {
@@ -614,9 +554,6 @@ function registerEvents() {
   }
   if (elements.importFile) {
     elements.importFile.addEventListener("change", handleFileImport);
-  }
-  if (elements.adminLearnButton) {
-    elements.adminLearnButton.addEventListener("click", handleAdminLearn);
   }
 }
 
