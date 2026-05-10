@@ -147,7 +147,12 @@ def ftp_load_daily_knowledge() -> List[dict]:
 
 
 def ftp_load_knowledge_for_search(max_files: int = 200) -> List[dict]:
-    """Load conversation entries from multiple FTP JSON files for recall search."""
+    """Load knowledge entries from multiple FTP JSON files for recall search.
+
+    Supports both formats:
+    1) Daily conversation arrays with user_message/ai_response
+    2) Fact-bank objects with profile/facts/notes/conversations
+    """
     conversations: List[dict] = []
     ftp = _ftp_connect()
     try:
@@ -173,12 +178,62 @@ def ftp_load_knowledge_for_search(max_files: int = 200) -> List[dict]:
             except Exception:
                 continue
 
+            # Format A: list of conversation dicts
             if isinstance(data, list):
                 for item in data:
                     if isinstance(item, dict):
                         item_copy = dict(item)
                         item_copy["source_file"] = filename
                         conversations.append(item_copy)
+
+            # Format B: object containing facts/conversations arrays
+            elif isinstance(data, dict):
+                # Convert conversation objects if present.
+                file_conversations = data.get("conversations", [])
+                if isinstance(file_conversations, list):
+                    for entry in file_conversations:
+                        if not isinstance(entry, dict):
+                            continue
+                        user_text = str(entry.get("user_message") or entry.get("user") or "").strip()
+                        ai_text = str(entry.get("ai_response") or entry.get("ai") or "").strip()
+                        if not user_text and not ai_text:
+                            continue
+                        conversations.append({
+                            "timestamp": entry.get("timestamp"),
+                            "user_message": user_text,
+                            "ai_response": ai_text,
+                            "source_file": filename,
+                            "entry_type": "conversation",
+                        })
+
+                # Convert fact objects to searchable pseudo conversations.
+                facts = data.get("facts", [])
+                if isinstance(facts, list):
+                    for fact in facts:
+                        if not isinstance(fact, dict):
+                            continue
+                        fact_text = str(fact.get("fact") or "").strip()
+                        context_text = str(fact.get("context") or "").strip()
+                        category = str(fact.get("category") or "").strip()
+                        fact_id = str(fact.get("id") or "").strip()
+
+                        if not fact_text:
+                            continue
+
+                        # user_message holds searchable metadata; ai_response is the canonical fact.
+                        searchable_prompt = " ".join(
+                            part for part in [category, fact_id, fact_text, context_text] if part
+                        )
+
+                        conversations.append({
+                            "timestamp": data.get("profile", {}).get("updatedAt"),
+                            "user_message": searchable_prompt,
+                            "ai_response": fact_text if not context_text else f"{fact_text}. {context_text}",
+                            "source_file": filename,
+                            "entry_type": "fact",
+                            "category": category,
+                            "fact_id": fact_id,
+                        })
 
         return conversations
     finally:
