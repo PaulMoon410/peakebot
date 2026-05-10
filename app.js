@@ -120,7 +120,11 @@ function addMessage(role, text) {
   const wrapper = document.createElement("article");
   wrapper.className = `message ${role}`;
   wrapper.innerHTML = `<strong>${role === "user" ? "You" : "AI"}</strong><p>${escapeHtml(text)}</p>`;
-  elements.chatLog.prepend(wrapper);
+  elements.chatLog.appendChild(wrapper);
+  // Auto-scroll to bottom
+  setTimeout(() => {
+    elements.chatLog.scrollTop = elements.chatLog.scrollHeight;
+  }, 0);
 }
 
 function escapeHtml(text) {
@@ -263,6 +267,20 @@ async function generateReply(prompt) {
   const lower = text.toLowerCase();
   state.lastFtpStatus = "";
 
+  // Verify FTP connection is available before processing
+  try {
+    const ftpCheck = await fetch(`${RENDER_SERVER}/api/health`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    const ftpData = await ftpCheck.json();
+    if (!ftpData.pythonKnowledgeServerOnline) {
+      return "FTP storage engine is offline. Cannot process chat at this time.";
+    }
+  } catch {
+    // FTP check failed, but continue anyway
+  }
+
   const rememberMatch = lower.match(/^remember that (.+?) is (.+)$/i) || lower.match(/^remember (.+?) is (.+)$/i);
   if (rememberMatch) {
     const [, subject, value] = rememberMatch;
@@ -324,6 +342,21 @@ async function generateReply(prompt) {
             } else {
               const reason = data.ftp.error || "unknown FTP error";
               state.lastFtpStatus = `FTP: save failed (${reason}).`;
+              // Verify FTP issue is real - retry verification
+              try {
+                const verifyCheck = await fetch(`${RENDER_SERVER}/api/health`, {
+                  method: "GET",
+                  headers: { "Content-Type": "application/json" },
+                });
+                const verifyData = await verifyCheck.json();
+                if (!verifyData.pythonKnowledgeServerOnline) {
+                  state.lastFtpStatus = `FTP: verified offline (${reason}).`;
+                } else {
+                  state.lastFtpStatus = `FTP: temporary issue (${reason}), retrying...`;
+                }
+              } catch {
+                state.lastFtpStatus = `FTP: save failed, network error (${reason}).`;
+              }
             }
             console.log(`[chat] ${state.lastFtpStatus}`);
           }
