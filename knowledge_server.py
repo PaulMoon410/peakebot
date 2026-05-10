@@ -121,7 +121,56 @@ def ftp_upload_knowledge(data: dict) -> str:
         ftp.quit()
 
 
-def ftp_check_duplicate(ai_response: str) -> bool:
+def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict]:
+    """
+    Search FTP brain for past conversations relevant to the query.
+    Uses simple word-overlap scoring against user_message and ai_response.
+    Returns up to max_results entries sorted by relevance score (highest first).
+    """
+    query_words = set(re.findall(r"\w+", query.lower()))
+    if not query_words:
+        return []
+
+    # Pull from cache first, then FTP for anything missing
+    scored = []
+    try:
+        files = ftp_list_knowledge()
+        ftp = _ftp_connect()
+        try:
+            for entry in files[:100]:  # Scan up to 100 most recent entries
+                name = entry["name"]
+                # Use cached version if available
+                with _cache_lock:
+                    data = _cache.get(name)
+
+                if data is None:
+                    buf = io.BytesIO()
+                    try:
+                        ftp.retrbinary(f"RETR {FTP_BRAIN_DIR}/{name}", buf.write)
+                        buf.seek(0)
+                        data = json.loads(buf.read().decode("utf-8"))
+                        with _cache_lock:
+                            _cache[name] = data
+                    except Exception:
+                        continue
+
+                user_msg = data.get("user_message", "")
+                ai_msg = data.get("ai_response", "")
+                combined = re.findall(r"\w+", (user_msg + " " + ai_msg).lower())
+                overlap = query_words.intersection(set(combined))
+                if overlap:
+                    scored.append((len(overlap), data))
+        finally:
+            ftp.quit()
+    except Exception as exc:
+        print(f"[knowledge_server] WARNING: knowledge search failed: {exc}")
+        return []
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [entry for _, entry in scored[:max_results]]
+
+
+
     """Return True if an identical AI response already exists on FTP."""
     try:
         files = ftp_list_knowledge()
@@ -320,30 +369,12 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 self._send(400, {"error": "Missing query parameter 'q'"})
                 return
             try:
-                files = ftp_list_knowledge()[:100]
-                results = []
-                ftp = _ftp_connect()
-                try:
-                    for entry in files:
-                        buf = io.BytesIO()
-                        try:
-                            ftp.retrbinary(f"RETR {FTP_BRAIN_DIR}/{entry['name']}", buf.write)
-                            buf.seek(0)
-                            data = json.loads(buf.read().decode("utf-8"))
-                            user_msg = data.get("user_message", "").lower()
-                            ai_msg = data.get("ai_response", "").lower()
-                            if query in user_msg or query in ai_msg:
-                                results.append(data)
-                        except Exception:
-                            continue
-                finally:
-                    ftp.quit()
+                limit = min(int(qs.get("limit", [5])[0]), 20)
+                results = ftp_search_relevant_knowledge(query, max_results=limit)
                 self._send(200, {"results": results, "count": len(results)})
             except Exception as exc:
                 self._send(500, {"error": str(exc)})
             return
-
-        self._send(404, {"error": "Not found"})
 
         # --- Memory GET: load from FTP ---
         if path == "/memory":
@@ -459,7 +490,37 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             for conv in (memory.get("conversations") or [])[-10:]:
                 history.append({"role": "user", "content": conv.get("user", "")})
                 history.append({"role": "assistant", "content": conv.get("ai", "")})
-            messages = history + [{"role": "user", "content": prompt}]
+
+            # Search FTP knowledge base for relevant past exchanges
+            relevant = ftp_search_relevant_knowledge(prompt, max_results=5)
+            knowledge_context = ""
+            if relevant:
+                snippets = []
+                for item in relevant:
+                    u = item.get("user_message", "").strip()
+                    a = item.get("ai_response", "").strip()
+                    if u and a:
+                        snippets.append(f"Q: {u}\nA: {a}")
+                if snippets:
+                    knowledge_context = (
+                        "The following are relevant past conversations you have had. "
+                        "Use them to inform your answer:\n\n"
+                        + "\n\n".join(snippets)
+                        + "\n\n"
+                    )
+
+            # Build system prompt with injected knowledge
+            system_content = (
+                "You are a helpful AI assistant with a persistent memory stored on FTP. "
+                "You learn from every conversation and become wiser over time.\n\n"
+                + knowledge_context
+            ).strip()
+
+            messages = (
+                [{"role": "system", "content": system_content}]
+                + history
+                + [{"role": "user", "content": prompt}]
+            )
 
             try:
                 ai_response = call_llama(messages)

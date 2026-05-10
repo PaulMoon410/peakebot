@@ -173,6 +173,43 @@ async function pyGetKnowledge(limit = 50) {
 }
 
 /**
+ * Search past knowledge via Python server.
+ * Returns matching entries array (may be empty).
+ */
+async function pySearchKnowledge(query, limit = 5) {
+  return new Promise((resolve) => {
+    const encoded = encodeURIComponent(query);
+    const pyUrl = new URL(`${PYTHON_KNOWLEDGE_SERVER}/knowledge/search?q=${encoded}&limit=${limit}`);
+    const transport = pyUrl.protocol === "https:" ? https : http;
+
+    const options = {
+      hostname: pyUrl.hostname,
+      port: pyUrl.port || 5001,
+      path: pyUrl.pathname + pyUrl.search,
+      method: "GET",
+      timeout: 8000,
+    };
+
+    const req = transport.request(options, (res) => {
+      const chunks = [];
+      res.on("data", (c) => chunks.push(c));
+      res.on("end", () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          resolve(body.results || []);
+        } catch (_) {
+          resolve([]);
+        }
+      });
+    });
+
+    req.on("timeout", () => { req.destroy(); resolve([]); });
+    req.on("error", () => resolve([]));
+    req.end();
+  });
+}
+
+/**
  * Check if the Python knowledge server is reachable.
  */
 async function pyHealthCheck() {
@@ -417,7 +454,34 @@ const server = http.createServer(async (req, res) => {
             { role: "assistant", content: conv.ai },
           ]).flat();
 
+          // Fetch relevant past knowledge from Python server to augment context
+          let knowledgeContext = "";
+          try {
+            const relevant = await pySearchKnowledge(text, 5);
+            if (relevant.length > 0) {
+              const snippets = relevant
+                .filter((item) => item.user_message && item.ai_response)
+                .map((item) => `Q: ${item.user_message.trim()}\nA: ${item.ai_response.trim()}`)
+                .join("\n\n");
+              if (snippets) {
+                knowledgeContext =
+                  "The following are relevant past conversations you have had. Use them to inform your answer:\n\n"
+                  + snippets + "\n\n";
+              }
+            }
+          } catch (_) { /* non-critical */ }
+
+          const systemMessage = {
+            role: "system",
+            content: (
+              "You are a helpful AI assistant with a persistent memory stored on FTP. "
+              + "You learn from every conversation and become wiser over time.\n\n"
+              + knowledgeContext
+            ).trim(),
+          };
+
           const response = await callLlamaServer([
+            systemMessage,
             ...conversationHistory,
             { role: "user", content: text },
           ]);
