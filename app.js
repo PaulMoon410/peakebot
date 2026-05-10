@@ -2,6 +2,7 @@ const IPFS_GATEWAY = "https://ipfs.io/ipfs/";
 const LLAMA_SERVER = "http://74.208.146.37:8080";
 const RENDER_SERVER = "https://peakebot.onrender.com";
 const CONNECTION_CHECK_INTERVAL_MS = 15000;
+const DIRECT_LLAMA_ALLOWED = window.location.protocol === "http:" || LLAMA_SERVER.startsWith("https://");
 
 const elements = {
   chatLog: document.querySelector("#chat-log"),
@@ -96,8 +97,13 @@ function setConnectionStatus() {
   }
 
   if (elements.llamaStatus) {
-    elements.llamaStatus.textContent = state.llamaConnected ? "Llama: Connected" : "Llama: Offline";
-    elements.llamaStatus.className = `service-indicator ${state.llamaConnected ? "online" : "offline"}`;
+    if (!DIRECT_LLAMA_ALLOWED) {
+      elements.llamaStatus.textContent = "Llama: Blocked on HTTPS (mixed content)";
+      elements.llamaStatus.className = "service-indicator offline";
+    } else {
+      elements.llamaStatus.textContent = state.llamaConnected ? "Llama: Connected" : "Llama: Offline";
+      elements.llamaStatus.className = `service-indicator ${state.llamaConnected ? "online" : "offline"}`;
+    }
   }
 
   if (elements.nodeStatus) {
@@ -293,8 +299,8 @@ async function generateReply(prompt) {
 
     let response;
     
-    // Try Llama server first
-    if (state.llamaConnected) {
+    // Try direct Llama only when browser security allows it.
+    if (DIRECT_LLAMA_ALLOWED && state.llamaConnected) {
       try {
         response = await fetch(`${LLAMA_SERVER}/v1/chat/completions`, {
           method: "POST",
@@ -434,28 +440,31 @@ function seedWelcomeMessage() {
 }
 
 async function checkConnections() {
-  // Check Llama server
-  try {
-    const response = await fetch(`${LLAMA_SERVER}/v1/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages: [{ role: "user", content: "test" }],
-        model: "qwen2.5",
-        stream: false,
-      }),
-    });
-    state.llamaConnected = response.ok;
-  } catch {
+  // Direct Llama checks are blocked by browser mixed-content policy on HTTPS pages.
+  if (!DIRECT_LLAMA_ALLOWED) {
     state.llamaConnected = false;
+  } else {
+    try {
+      const response = await fetch(`${LLAMA_SERVER}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "test" }],
+          model: "qwen2.5",
+          stream: false,
+        }),
+      });
+      state.llamaConnected = response.ok;
+    } catch {
+      state.llamaConnected = false;
+    }
   }
   
-  // Check Render Node server
+  // Check Render Node server health independent of model status.
   try {
-    const response = await fetch(`${RENDER_SERVER}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: "test", memory: {} }),
+    const response = await fetch(`${RENDER_SERVER}/api/health`, {
+      method: "GET",
+      cache: "no-store",
     });
     state.nodeConnected = response.ok;
   } catch {

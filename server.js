@@ -197,6 +197,7 @@ async function saveToBrain(userMessage, aiResponse, memory) {
 async function callLlamaServer(messages) {
   return new Promise((resolve, reject) => {
     const llamaUrl = new URL(`${LLAMA_SERVER}/v1/chat/completions`);
+    const transport = llamaUrl.protocol === "https:" ? https : http;
     const payload = JSON.stringify({
       messages,
       model: "qwen2.5",
@@ -208,18 +209,23 @@ async function callLlamaServer(messages) {
       port: llamaUrl.port || 8080,
       path: llamaUrl.pathname + llamaUrl.search,
       method: "POST",
+      timeout: 20000,
       headers: {
         "Content-Type": "application/json",
         "Content-Length": Buffer.byteLength(payload),
       },
     };
 
-    const proxyReq = http.request(options, (proxyRes) => {
+    const proxyReq = transport.request(options, (proxyRes) => {
       const chunks = [];
       proxyRes.on("data", (chunk) => chunks.push(chunk));
       proxyRes.on("end", () => {
         try {
           const body = Buffer.concat(chunks).toString("utf8");
+          if (proxyRes.statusCode < 200 || proxyRes.statusCode >= 300) {
+            reject(new Error(`Upstream Llama returned ${proxyRes.statusCode}: ${body.slice(0, 180)}`));
+            return;
+          }
           const data = JSON.parse(body);
           if (data.choices && data.choices[0] && data.choices[0].message) {
             resolve(data.choices[0].message.content);
@@ -232,6 +238,9 @@ async function callLlamaServer(messages) {
       });
     });
 
+    proxyReq.on("timeout", () => {
+      proxyReq.destroy(new Error("Llama upstream timed out"));
+    });
     proxyReq.on("error", reject);
     proxyReq.write(payload);
     proxyReq.end();
@@ -249,6 +258,17 @@ const server = http.createServer((req, res) => {
       "Access-Control-Allow-Headers": "Content-Type",
     });
     res.end();
+    return;
+  }
+
+  if (url.pathname === "/api/health" && req.method === "GET") {
+    sendJson(res, 200, {
+      ok: true,
+      service: "peakebot",
+      llamaConfigured: Boolean(LLAMA_SERVER),
+      llamaServer: LLAMA_SERVER,
+      timestamp: new Date().toISOString(),
+    });
     return;
   }
 
