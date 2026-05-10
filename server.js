@@ -441,8 +441,64 @@ const server = http.createServer(async (req, res) => {
 
           sendJson(res, 200, { response, source: "llama", duplicate: isDuplicate });
         } catch (llamaError) {
-          // If Llama fails, return error
-          sendJson(res, 502, { error: `Llama server error: ${llamaError.message}` });
+          // If Llama fails, try Python's /chat endpoint as fallback
+          console.log(`[main] Llama failed: ${llamaError.message}, trying Python fallback...`);
+          try {
+            const pyUrl = new URL(`${PYTHON_KNOWLEDGE_SERVER}/chat`);
+            const pyTransport = pyUrl.protocol === "https:" ? https : http;
+            const pyPayload = JSON.stringify({ prompt: text, memory });
+
+            const pyResponse = await new Promise((resolve, reject) => {
+              const options = {
+                hostname: pyUrl.hostname,
+                port: pyUrl.port || 5001,
+                path: pyUrl.pathname,
+                method: "POST",
+                timeout: 30000,
+                headers: {
+                  "Content-Type": "application/json",
+                  "Content-Length": Buffer.byteLength(pyPayload),
+                },
+              };
+
+              const pyReq = pyTransport.request(options, (res) => {
+                const chunks = [];
+                res.on("data", (c) => chunks.push(c));
+                res.on("end", () => {
+                  const body = Buffer.concat(chunks).toString("utf8");
+                  try {
+                    resolve(JSON.parse(body));
+                  } catch {
+                    reject(new Error(`Invalid JSON from Python: ${body.slice(0, 100)}`));
+                  }
+                });
+              });
+
+              pyReq.on("timeout", () => {
+                pyReq.destroy();
+                reject(new Error("Python server timeout"));
+              });
+              pyReq.on("error", reject);
+              pyReq.write(pyPayload);
+              pyReq.end();
+            });
+
+            if (!pyResponse.response) {
+              throw new Error("No response field from Python");
+            }
+
+            sendJson(res, 200, {
+              response: pyResponse.response,
+              source: "python-fallback",
+              filename: pyResponse.filename,
+            });
+          } catch (pythonError) {
+            // Both failed, return error
+            console.error(`[main] Both Llama and Python failed:`, llamaError.message, pythonError.message);
+            sendJson(res, 502, {
+              error: `AI unavailable: Llama (${llamaError.message}) and Python (${pythonError.message}) both failed`,
+            });
+          }
         }
       } catch (error) {
         sendJson(res, 400, { error: `Invalid JSON: ${error.message}` });
