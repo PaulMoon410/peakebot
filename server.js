@@ -467,7 +467,10 @@ const server = http.createServer(async (req, res) => {
                 res.on("end", () => {
                   const body = Buffer.concat(chunks).toString("utf8");
                   try {
-                    resolve(JSON.parse(body));
+                    resolve({
+                      status: res.statusCode,
+                      data: JSON.parse(body),
+                    });
                   } catch {
                     reject(new Error(`Invalid JSON from Python: ${body.slice(0, 100)}`));
                   }
@@ -483,14 +486,19 @@ const server = http.createServer(async (req, res) => {
               pyReq.end();
             });
 
-            if (!pyResponse.response) {
+            // Check if Python succeeded
+            if (pyResponse.status !== 200) {
+              throw new Error(`Python returned ${pyResponse.status}: ${pyResponse.data.error || "unknown error"}`);
+            }
+
+            if (!pyResponse.data.response) {
               throw new Error("No response field from Python");
             }
 
             sendJson(res, 200, {
-              response: pyResponse.response,
+              response: pyResponse.data.response,
               source: "python-fallback",
-              filename: pyResponse.filename,
+              filename: pyResponse.data.filename,
             });
           } catch (pythonError) {
             // Both failed, return error
