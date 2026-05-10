@@ -128,6 +128,45 @@ def ftp_load_daily_knowledge() -> List[dict]:
         return []
 
 
+def ftp_load_knowledge_for_search(max_files: int = 200) -> List[dict]:
+    """Load conversation entries from multiple FTP JSON files for recall search."""
+    conversations: List[dict] = []
+    ftp = _ftp_connect()
+    try:
+        try:
+            ftp.cwd(FTP_BRAIN_DIR)
+        except ftplib.error_perm:
+            return []
+
+        filenames = [name for name in ftp.nlst() if name.endswith(".json")]
+        # Reverse sort gives newest-first for date-style names and still includes legacy names.
+        filenames = sorted(filenames, reverse=True)[:max_files]
+
+        for filename in filenames:
+            buf = io.BytesIO()
+            try:
+                ftp.retrbinary(f"RETR {filename}", buf.write)
+            except ftplib.error_perm:
+                continue
+
+            buf.seek(0)
+            try:
+                data = json.loads(buf.read().decode("utf-8"))
+            except Exception:
+                continue
+
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict):
+                        item_copy = dict(item)
+                        item_copy["source_file"] = filename
+                        conversations.append(item_copy)
+
+        return conversations
+    finally:
+        ftp.quit()
+
+
 def ftp_append_conversation(user_message: str, ai_response: str, memory_state: dict) -> bool:
     """
     Append a conversation to today's daily file on FTP.
@@ -165,7 +204,7 @@ def ftp_append_conversation(user_message: str, ai_response: str, memory_state: d
 
 def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict]:
     """
-    Search conversations in today's daily file.
+    Search conversations across FTP knowledge files.
     Uses keyword importance scoring with TF-IDF-like weighting.
     """
     # Common stop words to ignore in matching
@@ -180,7 +219,7 @@ def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict
     }
     
     try:
-        conversations = ftp_load_daily_knowledge()
+        conversations = ftp_load_knowledge_for_search(max_files=200)
         
         # Extract keywords from query (longer words, meaningful words weighted higher)
         query_words_all = [w.lower() for w in re.findall(r"\w+", query.lower()) if w not in stop_words and len(w) > 2]
@@ -239,8 +278,30 @@ def generate_memory_response(prompt: str, memory: dict, relevant: List[dict]) ->
     Can combine multiple relevant results for a more complete answer."""
     lower = prompt.strip().lower()
 
-    if "what is today" in lower or "what's today" in lower or "what day is it" in lower:
-        return datetime.now(timezone.utc).strftime("Today is %A, %B %d, %Y (UTC).")
+    # Real-time date/time answers should bypass memory lookup.
+    now_utc = datetime.now(timezone.utc)
+    if (
+        "what is today" in lower
+        or "what's today" in lower
+        or "what day is it" in lower
+        or re.search(r"\b(today|date)\b", lower)
+    ):
+        return now_utc.strftime("Today is %A, %B %d, %Y (UTC).")
+
+    if (
+        "what time is it" in lower
+        or "current time" in lower
+        or re.search(r"\btime\b", lower)
+    ):
+        return now_utc.strftime("The current time is %H:%M:%S UTC on %A, %B %d, %Y.")
+
+    if (
+        "where are you from" in lower
+        or "where were you founded" in lower
+        or "where were you made" in lower
+        or ("founded" in lower and "where" in lower)
+    ):
+        return "I am based in Maryland."
 
     if relevant:
         # Check if we have multiple complementary results to combine
