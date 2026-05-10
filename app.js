@@ -1,6 +1,7 @@
 const IPFS_GATEWAY = "https://ipfs.io/ipfs/";
 const LLAMA_SERVER = "http://74.208.146.37:8080";
 const RENDER_SERVER = "https://peakebot.onrender.com";
+const PYTHON_SERVER = "https://peakebot.onrender.com"; // update if Python server has its own URL
 const CONNECTION_CHECK_INTERVAL_MS = 15000;
 const DIRECT_LLAMA_ALLOWED = window.location.protocol === "http:" || LLAMA_SERVER.startsWith("https://");
 
@@ -40,11 +41,12 @@ const state = {
   serverAvailable: true,
   llamaConnected: false,
   nodeConnected: false,
+  pythonConnected: false,
   connectionCheckTimer: null,
 };
 
 function hasAiConnection() {
-  return state.llamaConnected || state.nodeConnected;
+  return state.llamaConnected || state.nodeConnected || state.pythonConnected;
 }
 
 function updateChatAvailability() {
@@ -68,6 +70,13 @@ function persistMemory() {
   // Sync to Render server (fire-and-forget)
   if (state.nodeConnected) {
     fetch(`${RENDER_SERVER}/api/memory`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state.memory),
+    }).catch(() => { /* non-critical */ });
+  } else if (state.pythonConnected) {
+    // Fall back to Python server for memory persistence
+    fetch(`${PYTHON_SERVER}/memory`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(state.memory),
@@ -96,6 +105,10 @@ function setConnectionStatus() {
   } else if (state.nodeConnected) {
     icon = "🟡";
     text = "Connected (Node Server)";
+    bg = "#3a3a2a";
+  } else if (state.pythonConnected) {
+    icon = "🟡";
+    text = "Connected (Python Fallback)";
     bg = "#3a3a2a";
   }
   
@@ -373,6 +386,33 @@ async function generateReply(prompt) {
       }
     }
     
+    // Final fallback: Python knowledge server
+    if (state.pythonConnected) {
+      try {
+        const pyResponse = await fetch(`${PYTHON_SERVER}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: text,
+            memory: state.memory,
+          }),
+        });
+
+        let data = null;
+        try { data = await pyResponse.json(); } catch { /* ignore */ }
+
+        if (pyResponse.ok && data?.response) {
+          return data.response;
+        }
+
+        const message = data?.error || `Python server error (${pyResponse.status}).`;
+        return message;
+      } catch (error) {
+        state.pythonConnected = false;
+        setConnectionStatus();
+      }
+    }
+
     return "AI service unavailable. Please check connection status.";
   } catch (error) {
     return `Error: ${error.message}`;
@@ -491,7 +531,24 @@ async function checkConnections() {
   } catch {
     state.nodeConnected = false;
   }
-  
+
+  // Check Python knowledge server (only matters if it has its own separate URL).
+  if (PYTHON_SERVER !== RENDER_SERVER) {
+    try {
+      const pyRes = await fetch(`${PYTHON_SERVER}/health`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      state.pythonConnected = pyRes.ok;
+    } catch {
+      state.pythonConnected = false;
+    }
+  } else {
+    // If same host as Render, Python server is available whenever Node is up
+    // (start.sh runs both; on Render only Node runs unless you add Python separately)
+    state.pythonConnected = false; // set true only when Python has its own host
+  }
+
   setConnectionStatus();
 }
 
@@ -521,7 +578,7 @@ async function initializeMemory() {
   await checkConnections();
   startConnectionMonitor();
 
-  // Load persisted memory from Render server
+  // Load persisted memory: try Render, then Python server as fallback
   if (state.nodeConnected) {
     try {
       const res = await fetch(`${RENDER_SERVER}/api/memory`, { cache: "no-store" });
@@ -529,14 +586,27 @@ async function initializeMemory() {
         const remote = await res.json();
         if (remote && typeof remote === "object") {
           state.memory = { ...defaultMemory(), ...remote };
-          setStatus("Memory loaded from server.");
+          setStatus("Memory loaded from Render server.");
         }
       }
     } catch {
       setStatus("Could not load remote memory — using runtime defaults.", true);
     }
+  } else if (state.pythonConnected) {
+    try {
+      const res = await fetch(`${PYTHON_SERVER}/memory`, { cache: "no-store" });
+      if (res.ok) {
+        const remote = await res.json();
+        if (remote && typeof remote === "object") {
+          state.memory = { ...defaultMemory(), ...remote };
+          setStatus("Memory loaded from Python server.");
+        }
+      }
+    } catch {
+      setStatus("Could not load Python memory — using runtime defaults.", true);
+    }
   } else {
-    setStatus("Using runtime memory only (server offline).");
+    setStatus("Using runtime memory only (all servers offline).");
   }
 
   renderMemory();

@@ -17,10 +17,19 @@ import io
 import hashlib
 import re
 import threading
+import urllib.request
+import urllib.error
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Dict, List, Optional
 from urllib.parse import urlparse, parse_qs
+
+# ---------------------------------------------------------------------------
+# Llama / AI configuration
+# ---------------------------------------------------------------------------
+
+LLAMA_SERVER = os.environ.get("LLAMA_SERVER", "http://74.208.146.37:8080")
+LLAMA_MODEL = os.environ.get("LLAMA_MODEL", "qwen2.5")
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -136,7 +145,80 @@ def ftp_check_duplicate(ai_response: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# HTTP Request handler
+# Llama AI helpers
+# ---------------------------------------------------------------------------
+
+def call_llama(messages: list, timeout: int = 25) -> str:
+    """
+    POST to the Llama /v1/chat/completions endpoint.
+    Returns the assistant message string, or raises on failure.
+    """
+    payload = json.dumps({
+        "messages": messages,
+        "model": LLAMA_MODEL,
+        "stream": False,
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        f"{LLAMA_SERVER}/v1/chat/completions",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+
+    try:
+        return data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError):
+        raise ValueError(f"Unexpected Llama response shape: {data}")
+
+
+def llama_health() -> bool:
+    """Return True if Llama server responds to a minimal probe."""
+    try:
+        call_llama([{"role": "user", "content": "ping"}], timeout=5)
+        return True
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# FTP memory (simple key-value store for the conversation memory object)
+# ---------------------------------------------------------------------------
+
+FTP_MEMORY_PATH = "/ai/memory.json"
+
+
+def ftp_load_memory() -> dict:
+    """Download memory.json from FTP. Returns empty default on failure."""
+    try:
+        ftp = _ftp_connect()
+        buf = io.BytesIO()
+        ftp.retrbinary(f"RETR {FTP_MEMORY_PATH}", buf.write)
+        ftp.quit()
+        buf.seek(0)
+        data = json.loads(buf.read().decode("utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def ftp_save_memory(memory: dict) -> bool:
+    """Upload memory.json to FTP. Returns True on success."""
+    try:
+        ftp = _ftp_connect()
+        _ensure_ftp_dir(ftp, "/ai")
+        payload = json.dumps(memory, indent=2, ensure_ascii=False).encode("utf-8")
+        ftp.storbinary(f"STOR {FTP_MEMORY_PATH}", io.BytesIO(payload))
+        ftp.quit()
+        return True
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# HTTP helpers
 # ---------------------------------------------------------------------------
 
 def _cors_headers() -> dict:
@@ -194,6 +276,7 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 "ok": True,
                 "service": "knowledge-server",
                 "ftp_host": FTP_HOST,
+                "llama_server": LLAMA_SERVER,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             })
             return
@@ -262,6 +345,41 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
 
         self._send(404, {"error": "Not found"})
 
+        # --- Memory GET: load from FTP ---
+        if path == "/memory":
+            try:
+                memory = ftp_load_memory()
+                self._send(200, memory)
+            except Exception as exc:
+                self._send(500, {"error": str(exc)})
+            return
+
+        self._send(404, {"error": "Not found"})
+
+    def do_PUT(self):  # noqa: N802
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/")
+
+        # --- Memory PUT: save to FTP ---
+        if path == "/memory":
+            body = self._read_body()
+            if body is None:
+                self._send(400, {"error": "Invalid or oversized JSON body"})
+                return
+            if not isinstance(body, dict):
+                self._send(400, {"error": "Memory must be a JSON object"})
+                return
+            body["profile"] = body.get("profile", {})
+            body["profile"]["updatedAt"] = datetime.now(timezone.utc).isoformat()
+            ok = ftp_save_memory(body)
+            if ok:
+                self._send(200, {"ok": True, "updatedAt": body["profile"]["updatedAt"]})
+            else:
+                self._send(500, {"error": "Failed to save memory to FTP"})
+            return
+
+        self._send(404, {"error": "Not found"})
+
     def do_POST(self):  # noqa: N802
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
@@ -322,6 +440,57 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 self._send(500, {"error": str(exc)})
             return
 
+        # --- Chat: receive a user message, call Llama, store result on FTP ---
+        if path == "/chat":
+            body = self._read_body()
+            if body is None:
+                self._send(400, {"error": "Invalid or oversized JSON body"})
+                return
+
+            prompt = body.get("prompt", "").strip()
+            memory = body.get("memory", {})
+
+            if not prompt:
+                self._send(400, {"error": "Field 'prompt' is required"})
+                return
+
+            # Build conversation history from memory (last 10 turns)
+            history = []
+            for conv in (memory.get("conversations") or [])[-10:]:
+                history.append({"role": "user", "content": conv.get("user", "")})
+                history.append({"role": "assistant", "content": conv.get("ai", "")})
+            messages = history + [{"role": "user", "content": prompt}]
+
+            try:
+                ai_response = call_llama(messages)
+            except Exception as exc:
+                print(f"[knowledge_server] Llama error: {exc}")
+                self._send(502, {"error": f"Llama server error: {exc}"})
+                return
+
+            # Store the conversation in FTP /ai/brain (non-blocking best-effort)
+            try:
+                entry = {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "user_message": prompt,
+                    "ai_response": ai_response,
+                    "memory_state": memory,
+                }
+                filename = ftp_upload_knowledge(entry)
+                with _cache_lock:
+                    _cache[filename] = entry
+                print(f"[knowledge_server] Chat saved: {filename}")
+            except Exception as exc:
+                print(f"[knowledge_server] WARNING: could not save to FTP: {exc}")
+                filename = None
+
+            self._send(200, {
+                "response": ai_response,
+                "source": "python-knowledge-server",
+                "filename": filename,
+            })
+            return
+
         self._send(404, {"error": "Not found"})
 
 
@@ -333,13 +502,17 @@ if __name__ == "__main__":
     server = HTTPServer(("0.0.0.0", PYTHON_PORT), KnowledgeHandler)
     print(f"[knowledge_server] Python knowledge server running on port {PYTHON_PORT}")
     print(f"[knowledge_server] FTP host: {FTP_HOST}  |  brain dir: {FTP_BRAIN_DIR}")
+    print(f"[knowledge_server] Llama: {LLAMA_SERVER}")
     print(f"[knowledge_server] Endpoints:")
-    print(f"  GET  /health")
-    print(f"  GET  /knowledge?limit=50")
-    print(f"  GET  /knowledge/<filename>")
-    print(f"  GET  /knowledge/search?q=<query>")
-    print(f"  POST /knowledge  {{user_message, ai_response, memory_state}}")
-    print(f"  POST /sync")
+    print(f"  GET    /health")
+    print(f"  GET    /memory")
+    print(f"  PUT    /memory")
+    print(f"  GET    /knowledge?limit=50")
+    print(f"  GET    /knowledge/<filename>")
+    print(f"  GET    /knowledge/search?q=<query>")
+    print(f"  POST   /chat  {{prompt, memory}}")
+    print(f"  POST   /knowledge  {{user_message, ai_response, memory_state}}")
+    print(f"  POST   /sync")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
