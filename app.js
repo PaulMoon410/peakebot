@@ -40,6 +40,7 @@ const state = {
   serverAvailable: true,
   llamaConnected: false,
   nodeConnected: false,
+  lastFtpStatus: "",
   connectionCheckTimer: null,
 };
 
@@ -267,6 +268,7 @@ function clearMemory() {
 async function generateReply(prompt) {
   const text = prompt.trim();
   const lower = text.toLowerCase();
+  state.lastFtpStatus = "";
 
   const rememberMatch = lower.match(/^remember that (.+?) is (.+)$/i) || lower.match(/^remember (.+?) is (.+)$/i);
   if (rememberMatch) {
@@ -358,6 +360,18 @@ async function generateReply(prompt) {
         }
 
         if (nodeResponse.ok && data?.response) {
+          if (data.ftp) {
+            if (data.ftp.skipped) {
+              state.lastFtpStatus = "FTP: skipped (duplicate response).";
+            } else if (data.ftp.ok) {
+              const target = data.ftp.dailyFile || "daily file";
+              state.lastFtpStatus = `FTP: save success (${target}).`;
+            } else {
+              const reason = data.ftp.error || "unknown FTP error";
+              state.lastFtpStatus = `FTP: save failed (${reason}).`;
+            }
+            console.log(`[chat] ${state.lastFtpStatus}`);
+          }
           return data.response;
         }
 
@@ -413,7 +427,8 @@ async function handleChatSubmit(event) {
     const response = await generateReply(prompt);
     addMessage("ai", response);
     logConversation(prompt, response);
-    setStatus("Response received and saved to memory.");
+    const ftpNote = state.lastFtpStatus ? ` ${state.lastFtpStatus}` : "";
+    setStatus(`Response received and saved to memory.${ftpNote}`);
   } catch (error) {
     addMessage("ai", `Error: ${error.message}`);
     setStatus(`Chat error: ${error.message}`, true);
@@ -544,6 +559,12 @@ async function initializeMemory() {
 
 function registerEvents() {
   elements.chatForm.addEventListener("submit", handleChatSubmit);
+  elements.chatInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      elements.chatForm.requestSubmit();
+    }
+  });
   elements.exportMemory.addEventListener("click", exportMemory);
   elements.copyMemory.addEventListener("click", async () => {
     try {

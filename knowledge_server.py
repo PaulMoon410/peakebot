@@ -517,19 +517,28 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 return
 
             # Store the conversation to today's daily file on FTP
+            ftp_saved = False
+            daily_file = None
+            ftp_error = None
             try:
                 ok = ftp_append_conversation(prompt, ai_response, memory)
                 if ok:
+                    ftp_saved = True
                     daily_file = ftp_get_daily_filename()
                     print(f"[knowledge_server] Chat appended to {daily_file}")
                 else:
+                    ftp_error = "Failed to append to FTP"
                     print(f"[knowledge_server] WARNING: could not append to FTP")
             except Exception as exc:
+                ftp_error = str(exc)
                 print(f"[knowledge_server] WARNING: FTP append failed: {exc}")
 
             self._send(200, {
                 "response": ai_response,
                 "source": "python-knowledge-server",
+                "ftp_saved": ftp_saved,
+                "daily_file": daily_file,
+                "ftp_error": ftp_error,
             })
             return
 

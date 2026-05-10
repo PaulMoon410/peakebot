@@ -123,9 +123,15 @@ async function pyStoreKnowledge(userMessage, aiResponse, memoryState) {
       res.on("end", () => {
         try {
           const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-          console.log(`[py-bridge] Knowledge stored: ${body.filename || "(duplicate)"}`);
+          const ok = res.statusCode >= 200 && res.statusCode < 300 && body.ok !== false;
+          if (ok) {
+            console.log(`[py-bridge] Knowledge stored: ${body.daily_file || body.filename || "(ok)"}`);
+          } else {
+            console.error(`[py-bridge] Knowledge store failed: ${body.error || `HTTP ${res.statusCode}`}`);
+          }
+          resolve(ok);
         } catch (_) { /* ignore parse error */ }
-        resolve(true);
+        resolve(res.statusCode >= 200 && res.statusCode < 300);
       });
     });
 
@@ -345,11 +351,18 @@ async function saveToBrain(userMessage, aiResponse, memory) {
     
     client.close();
     console.log(`[main] Appended to FTP: ${dailyFilename} (${conversations.length} total conversations today)`);
-    return dailyFilename;
+    return {
+      ok: true,
+      dailyFile: dailyFilename,
+      totalConversations: conversations.length,
+    };
   } catch (error) {
     console.error("[main] Error saving to FTP:", error.message);
     // Fall back to local save
-    return null;
+    return {
+      ok: false,
+      error: error.message,
+    };
   }
 }
 
@@ -503,22 +516,54 @@ const server = http.createServer(async (req, res) => {
 
           // Check for duplicate response
           const isDuplicate = await isDuplicateResponse(response);
+          let ftpStatus = {
+            ok: false,
+            skipped: false,
+            reason: "not-attempted",
+          };
           
           if (!isDuplicate) {
             // Save to FTP brain and local knowledge
-            await saveToBrain(text, response, memory);
-            saveKnowledge({
-              user: text,
-              ai: response,
-              memory,
-            });
-            // Also forward to Python knowledge server (non-blocking, fire-and-forget)
-            pyStoreKnowledge(text, response, memory).then((ok) => {
-              if (ok) console.log("[py-bridge] Knowledge forwarded to Python server");
-            });
+            const ftpMainResult = await saveToBrain(text, response, memory);
+            try {
+              saveKnowledge({
+                user: text,
+                ai: response,
+                memory,
+              });
+            } catch (localSaveError) {
+              console.error("[main] Local knowledge save failed:", localSaveError.message);
+            }
+
+            const pyBridgeOk = await pyStoreKnowledge(text, response, memory);
+            ftpStatus = {
+              ok: Boolean(ftpMainResult.ok),
+              skipped: false,
+              dailyFile: ftpMainResult.dailyFile || null,
+              totalConversations: ftpMainResult.totalConversations || null,
+              pythonBridgeOk: pyBridgeOk,
+              error: ftpMainResult.error || null,
+            };
+            if (ftpStatus.ok) {
+              console.log(`[main] FTP save success: ${ftpStatus.dailyFile}`);
+            } else {
+              console.error(`[main] FTP save failed: ${ftpStatus.error || "unknown error"}`);
+            }
+          } else {
+            ftpStatus = {
+              ok: true,
+              skipped: true,
+              reason: "duplicate-response",
+            };
+            console.log("[main] FTP save skipped (duplicate AI response)");
           }
 
-          sendJson(res, 200, { response, source: "llama", duplicate: isDuplicate });
+          sendJson(res, 200, {
+            response,
+            source: "llama",
+            duplicate: isDuplicate,
+            ftp: ftpStatus,
+          });
         } catch (llamaError) {
           // If Llama fails, try Python's /chat endpoint as fallback
           console.log(`[main] Llama failed: ${llamaError.message}, trying Python fallback...`);
@@ -578,6 +623,12 @@ const server = http.createServer(async (req, res) => {
               response: pyResponse.data.response,
               source: "python-fallback",
               filename: pyResponse.data.filename,
+              ftp: {
+                ok: pyResponse.data.ftp_saved === true,
+                skipped: false,
+                dailyFile: pyResponse.data.daily_file || null,
+                error: pyResponse.data.ftp_error || null,
+              },
             });
           } catch (pythonError) {
             // Both failed, return error
