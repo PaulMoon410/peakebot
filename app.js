@@ -1,6 +1,7 @@
 const IPFS_GATEWAY = "https://ipfs.io/ipfs/";
 const LLAMA_SERVER = "http://74.208.146.37:8080";
 const RENDER_SERVER = "https://peakebot.onrender.com";
+const CONNECTION_CHECK_INTERVAL_MS = 15000;
 
 const elements = {
   chatLog: document.querySelector("#chat-log"),
@@ -37,6 +38,7 @@ const state = {
   serverAvailable: true,
   llamaConnected: false,
   nodeConnected: false,
+  connectionCheckTimer: null,
 };
 
 function hasAiConnection() {
@@ -465,11 +467,32 @@ async function checkConnections() {
   setConnectionStatus();
 }
 
+function startConnectionMonitor() {
+  if (state.connectionCheckTimer) {
+    clearInterval(state.connectionCheckTimer);
+  }
+
+  state.connectionCheckTimer = setInterval(() => {
+    checkConnections();
+  }, CONNECTION_CHECK_INTERVAL_MS);
+
+  window.addEventListener("online", () => {
+    checkConnections();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      checkConnections();
+    }
+  });
+}
+
 function initializeMemory() {
   state.memory = { ...defaultMemory(), ...loadLocalMemory() };
   setStatus("Using browser localStorage for memory.");
   updateChatAvailability();
   checkConnections();
+  startConnectionMonitor();
   renderMemory();
 }
 
