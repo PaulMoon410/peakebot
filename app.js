@@ -11,6 +11,8 @@ const elements = {
   memoryPreview: document.querySelector("#memory-preview"),
   status: document.querySelector("#status"),
   connectionStatus: document.querySelector("#connection-status"),
+  llamaStatus: document.querySelector("#llama-status"),
+  nodeStatus: document.querySelector("#node-status"),
   memoryStats: document.querySelector("#memory-stats"),
   exportMemory: document.querySelector("#export-memory"),
   copyMemory: document.querySelector("#copy-memory"),
@@ -34,7 +36,6 @@ const defaultMemory = () => ({
 
 const state = {
   memory: defaultMemory(),
-  storageMode: "localStorage",
   serverAvailable: true,
   llamaConnected: false,
   nodeConnected: false,
@@ -62,20 +63,7 @@ function updateChatAvailability() {
 
 function persistMemory() {
   state.memory.profile.updatedAt = new Date().toISOString();
-  localStorage.setItem("ai-memory", JSON.stringify(state.memory));
   renderMemory();
-}
-
-function loadLocalMemory() {
-  try {
-    const saved = localStorage.getItem("ai-memory");
-    if (saved) {
-      return JSON.parse(saved);
-    }
-  } catch {
-    // Ignore parse errors
-  }
-  return defaultMemory();
 }
 
 function setStatus(message, isError = false) {
@@ -107,6 +95,16 @@ function setConnectionStatus() {
     elements.connectionStatus.style.backgroundColor = bg;
   }
 
+  if (elements.llamaStatus) {
+    elements.llamaStatus.textContent = state.llamaConnected ? "Llama: Connected" : "Llama: Offline";
+    elements.llamaStatus.className = `service-indicator ${state.llamaConnected ? "online" : "offline"}`;
+  }
+
+  if (elements.nodeStatus) {
+    elements.nodeStatus.textContent = state.nodeConnected ? "Node Server: Connected" : "Node Server: Offline";
+    elements.nodeStatus.className = `service-indicator ${state.nodeConnected ? "online" : "offline"}`;
+  }
+
   updateChatAvailability();
 }
 
@@ -129,7 +127,7 @@ function escapeHtml(text) {
 function renderMemory() {
   elements.memoryPreview.textContent = JSON.stringify(state.memory, null, 2);
   const stats = [
-    "Storage: Browser localStorage",
+    "Storage: Runtime only (no localStorage)",
     `AI Server: ${LLAMA_SERVER}`,
     `Facts: ${state.memory.facts.length}`,
     `Notes: ${state.memory.notes.length}`,
@@ -488,8 +486,8 @@ function startConnectionMonitor() {
 }
 
 function initializeMemory() {
-  state.memory = { ...defaultMemory(), ...loadLocalMemory() };
-  setStatus("Using browser localStorage for memory.");
+  state.memory = defaultMemory();
+  setStatus("Using runtime memory only (not persisted in localStorage).");
   updateChatAvailability();
   checkConnections();
   startConnectionMonitor();

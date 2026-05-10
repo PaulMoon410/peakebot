@@ -109,6 +109,36 @@ textarea {
   min-height: 2rem;
 }
 
+.connection-status {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.service-status-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.service-indicator {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.88rem;
+}
+
+.service-indicator.online {
+  background: rgba(66, 186, 112, 0.16);
+  color: #9be8b4;
+}
+
+.service-indicator.offline {
+  background: rgba(255, 107, 129, 0.12);
+  color: #ff9aa9;
+}
+
 .stats {
   list-style: none;
   padding: 0;

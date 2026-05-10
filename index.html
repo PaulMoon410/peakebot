@@ -16,7 +16,7 @@
         <h2>Memory</h2>
         <button id="export-memory">Export JSON</button>
         <button id="copy-memory">Copy JSON</button>
-        <button id="clear-memory" class="danger">Clear Local Memory</button>
+        <button id="clear-memory" class="danger">Clear Runtime Memory</button>
       </section>
 
       <section class="panel">
@@ -31,8 +31,12 @@
 
       <section class="panel">
         <h2>Status</h2>
-        <div id="connection-status" class="connection-status" style="margin-bottom: 12px; padding: 8px; border-radius: 4px; font-size: 0.9em; font-weight: bold;">
+        <div id="connection-status" class="connection-status">
           🔴 Connecting...
+        </div>
+        <div class="service-status-list">
+          <div id="llama-status" class="service-indicator offline">Llama: Checking...</div>
+          <div id="node-status" class="service-indicator offline">Node Server: Checking...</div>
         </div>
         <div id="status" class="status">Ready.</div>
         <ul id="memory-stats" class="stats"></ul>
@@ -43,7 +47,7 @@
       <section class="hero panel">
         <h2>How this works</h2>
         <p>
-          This AI stores its memory as JSON in browser storage tied to this site origin.
+          This AI keeps memory in runtime while the page is open.
           It can also recall JSON from a website URL or an IPFS URL/CID and merge that into memory.
         </p>
       </section>
