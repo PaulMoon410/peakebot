@@ -43,6 +43,24 @@ FTP_BRAIN_DIR = "/ai/brain"
 _cache: Dict[str, dict] = {}
 _cache_lock = threading.Lock()
 
+# Responses matching these patterns are considered low-quality memory and
+# should not be selected as knowledge answers.
+LOW_QUALITY_PATTERNS = [
+    "i found a closely related conversation in memory",
+    "i found multiple related conversations in memory",
+    "i do not have a close prior conversation",
+    "node proxy error",
+    "python memory engine unavailable",
+    "ai unavailable",
+]
+
+
+def is_low_quality_ai_response(text: str) -> bool:
+    t = (text or "").strip().lower()
+    if not t:
+        return True
+    return any(pattern in t for pattern in LOW_QUALITY_PATTERNS)
+
 # ---------------------------------------------------------------------------
 # FTP helpers
 # ---------------------------------------------------------------------------
@@ -238,6 +256,11 @@ def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict
         for conv in conversations:
             user_msg = conv.get("user_message", "")
             ai_msg = conv.get("ai_response", "")
+
+            # Skip responses that are known fallback/error/recursive templates.
+            if is_low_quality_ai_response(ai_msg):
+                continue
+
             combined = (user_msg + " " + ai_msg).lower()
             
             # Extract keywords from conversation (same method as query)
@@ -303,6 +326,9 @@ def generate_memory_response(prompt: str, memory: dict, relevant: List[dict]) ->
     ):
         return "I am based in Maryland."
 
+    # Defensive cleanup in case a low-quality answer still slips in.
+    relevant = [r for r in relevant if not is_low_quality_ai_response(r.get("ai_response", ""))]
+
     if relevant:
         # Check if we have multiple complementary results to combine
         if len(relevant) >= 2:
@@ -316,11 +342,8 @@ def generate_memory_response(prompt: str, memory: dict, relevant: List[dict]) ->
             
             # If both are relevant and different enough, combine them
             if first_a and second_a and first_a.lower() != second_a.lower():
-                return (
-                    "I found multiple related conversations in memory.\n\n"
-                    f"First: \"{first_q}\" → {first_a}\n\n"
-                    f"Also related: \"{second_q}\" → {second_a}"
-                )
+                # Return direct factual content instead of template wrappers.
+                return f"{first_a}\n\nRelated info: {second_a}"
         
         # Use single best result
         best = relevant[0]
@@ -329,11 +352,8 @@ def generate_memory_response(prompt: str, memory: dict, relevant: List[dict]) ->
 
         if best_a:
             if best_q and best_q.lower() != lower:
-                return (
-                    "I found a closely related conversation in memory.\n\n"
-                    f"Closest prior question: \"{best_q}\"\n"
-                    f"Closest prior answer: {best_a}"
-                )
+                # Return the best known answer directly to avoid recursive memory loops.
+                return best_a
             return best_a
 
     facts = memory.get("facts") if isinstance(memory, dict) else []
