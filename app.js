@@ -39,6 +39,7 @@ const state = {
   pythonConnected: false,
   nodeConnected: false,
   lastFtpStatus: "",
+  startupKnowledgeCount: 0,
   connectionCheckTimer: null,
 };
 
@@ -481,6 +482,32 @@ async function checkConnections() {
   setConnectionStatus();
 }
 
+async function warmupKnowledgeFacts() {
+  if (!state.nodeConnected) {
+    return;
+  }
+
+  try {
+    setStatus("Searching knowledge base facts on startup... Please be patient.");
+    const query = encodeURIComponent("bitcoin hive constitution america maryland chessie");
+    const response = await fetch(`${RENDER_SERVER}/api/knowledge/search?q=${query}&limit=10`, {
+      method: "GET",
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      return;
+    }
+
+    const data = await response.json();
+    const count = Number(data?.count || 0);
+    state.startupKnowledgeCount = count;
+    setStatus(`Startup knowledge scan complete. ${count} fact matches ready.`);
+  } catch {
+    // Non-fatal: chat should still function without startup warm-up.
+  }
+}
+
 function startConnectionMonitor() {
   if (state.connectionCheckTimer) {
     clearInterval(state.connectionCheckTimer);
@@ -505,6 +532,7 @@ async function initializeMemory() {
   state.memory = defaultMemory();
   updateChatAvailability();
   await checkConnections();
+  await warmupKnowledgeFacts();
   startConnectionMonitor();
 
   // Load persisted memory from Render server

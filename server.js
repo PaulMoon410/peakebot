@@ -137,6 +137,43 @@ async function pyGetKnowledge(limit = 50) {
 }
 
 /**
+ * Search knowledge entries via Python server.
+ * Returns { results, count } or null if unavailable.
+ */
+async function pySearchKnowledge(query, limit = 8) {
+  return new Promise((resolve) => {
+    const safeQuery = encodeURIComponent(String(query || "").trim());
+    const pyUrl = new URL(`${PYTHON_KNOWLEDGE_SERVER}/knowledge/search?q=${safeQuery}&limit=${limit}`);
+    const transport = pyUrl.protocol === "https:" ? https : http;
+
+    const options = {
+      hostname: pyUrl.hostname,
+      port: pyUrl.port || 5001,
+      path: pyUrl.pathname + pyUrl.search,
+      method: "GET",
+      timeout: 12000,
+    };
+
+    const req = transport.request(options, (res) => {
+      const chunks = [];
+      res.on("data", (c) => chunks.push(c));
+      res.on("end", () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          resolve({ results: body.results || [], count: body.count || 0 });
+        } catch (_) {
+          resolve(null);
+        }
+      });
+    });
+
+    req.on("timeout", () => { req.destroy(); resolve(null); });
+    req.on("error", () => resolve(null));
+    req.end();
+  });
+}
+
+/**
  * Check if the Python knowledge server is reachable.
  */
 async function pyHealthCheck() {
@@ -497,6 +534,23 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 503, { error: "Python knowledge server unavailable" });
     } else {
       sendJson(res, 200, { files, count: files.length, source: "python-knowledge-server" });
+    }
+    return;
+  }
+
+  // Proxy search against Python knowledge server.
+  if (url.pathname === "/api/knowledge/search" && req.method === "GET") {
+    const q = (url.searchParams.get("q") || "").trim();
+    if (!q) {
+      sendJson(res, 400, { error: "Missing query parameter 'q'." });
+      return;
+    }
+    const limit = Math.min(parseInt(url.searchParams.get("limit") || "8", 10) || 8, 20);
+    const payload = await pySearchKnowledge(q, limit);
+    if (!payload) {
+      sendJson(res, 503, { error: "Python knowledge search unavailable" });
+    } else {
+      sendJson(res, 200, { ...payload, source: "python-knowledge-search" });
     }
     return;
   }
