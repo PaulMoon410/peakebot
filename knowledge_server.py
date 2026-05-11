@@ -546,6 +546,10 @@ def generate_memory_response(
     Can combine multiple relevant results for a more complete answer."""
     lower = prompt.strip().lower()
 
+    # Greeting intents should return natural chat responses, not recalled facts.
+    if re.fullmatch(r"\s*(hi|hello|hey|yo|good\s+morning|good\s+afternoon|good\s+evening)\s*[!.?]*\s*", lower):
+        return f"Hello! I am {BOT_NAME}. How can I help you today?"
+
     # Real-time date/time answers should bypass memory lookup.
     now_utc = datetime.now(timezone.utc)
     if (
