@@ -25,6 +25,7 @@ function normalizePythonServerUrl(rawUrl) {
 const PYTHON_KNOWLEDGE_SERVER = normalizePythonServerUrl(
   process.env.PYTHON_KNOWLEDGE_SERVER || `http://${PYTHON_HOST}:${PYTHON_PORT}`,
 );
+const PYTHON_CHAT_TIMEOUT_MS = parseInt(process.env.PYTHON_CHAT_TIMEOUT_MS || "90000", 10);
 const START_PYTHON_SERVER = process.env.START_PYTHON_SERVER !== "false";
 const FTP_BRAIN_DIR = process.env.FTP_BRAIN_DIR || "/ai/brain";
 
@@ -267,7 +268,7 @@ const server = http.createServer(async (req, res) => {
               port: pyUrl.port || 5001,
               path: pyUrl.pathname,
               method: "POST",
-              timeout: 30000,
+              timeout: PYTHON_CHAT_TIMEOUT_MS,
               headers: {
                 "Content-Type": "application/json",
                 "Content-Length": Buffer.byteLength(pyPayload),
@@ -437,7 +438,7 @@ const server = http.createServer(async (req, res) => {
             port: pyUrl.port || 5001,
             path: pyUrl.pathname,
             method: "POST",
-            timeout: 15000,
+              timeout: PYTHON_CHAT_TIMEOUT_MS,
             headers: {
               "Content-Type": "application/json",
               "Content-Length": Buffer.byteLength(pyPayload),

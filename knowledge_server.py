@@ -44,6 +44,7 @@ SEARCH_MAX_FILES = int(os.environ.get("SEARCH_MAX_FILES", "0"))
 FTP_AI_KNOW_DIR = os.environ.get("FTP_AI_KNOW_DIR", FTP_BRAIN_DIR)
 TERM_KNOWLEDGE_FILE = os.environ.get("TERM_KNOWLEDGE_FILE", "term_knowledge.json")
 TERM_CACHE_TTL_SECONDS = int(os.environ.get("TERM_CACHE_TTL_SECONDS", "300"))
+SEARCH_CACHE_TTL_SECONDS = int(os.environ.get("SEARCH_CACHE_TTL_SECONDS", "120"))
 
 # In-memory cache to reduce FTP round-trips
 _cache: Dict[str, dict] = {}
@@ -55,6 +56,11 @@ _term_knowledge_cache: Dict[str, object] = {
     "data": {"aliases": {}, "definitions": {}},
 }
 _term_knowledge_lock = threading.Lock()
+
+# Cache parsed knowledge corpus used by search to avoid re-downloading FTP files
+# on every chat request.
+_search_corpus_cache: Dict[str, dict] = {}
+_search_corpus_lock = threading.Lock()
 
 # Responses matching these patterns are considered low-quality memory and
 # should not be selected as knowledge answers.
@@ -264,6 +270,15 @@ def ftp_load_knowledge_for_search(max_files: Optional[int] = None) -> List[dict]
     1) Daily conversation arrays with user_message/ai_response
     2) Fact-bank objects with profile/facts/notes/conversations
     """
+    cache_key = str(max_files if max_files is not None else 0)
+    now = time.time()
+    with _search_corpus_lock:
+        cache_entry = _search_corpus_cache.get(cache_key)
+        if cache_entry and (now - float(cache_entry.get("loaded_at", 0.0))) < SEARCH_CACHE_TTL_SECONDS:
+            cached = cache_entry.get("data", [])
+            if isinstance(cached, list):
+                return cached
+
     conversations: List[dict] = []
     ftp = _ftp_connect()
     try:
@@ -367,6 +382,11 @@ def ftp_load_knowledge_for_search(max_files: Optional[int] = None) -> List[dict]
                             "fact_id": fact_id,
                         })
 
+        with _search_corpus_lock:
+            _search_corpus_cache[cache_key] = {
+                "loaded_at": now,
+                "data": conversations,
+            }
         return conversations
     finally:
         ftp.quit()
@@ -400,6 +420,8 @@ def ftp_append_conversation(user_message: str, ai_response: str, memory_state: d
         # Clear cache for this file
         with _cache_lock:
             _cache.pop(filename, None)
+        with _search_corpus_lock:
+            _search_corpus_cache.clear()
         
         return True
     except Exception as exc:
@@ -871,6 +893,8 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             try:
                 with _cache_lock:
                     _cache.clear()
+                with _search_corpus_lock:
+                    _search_corpus_cache.clear()
                 with _term_knowledge_lock:
                     _term_knowledge_cache["loaded_at"] = 0.0
                     _term_knowledge_cache["data"] = {"aliases": {}, "definitions": {}}
