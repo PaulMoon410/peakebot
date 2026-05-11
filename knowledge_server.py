@@ -67,6 +67,24 @@ BASIC_TERM_DEFINITIONS = {
         "Hive is a decentralized blockchain and social ecosystem used for content, communities, and apps. "
         "It uses on-chain accounts and rewards activity through native tokens."
     ),
+    "constitution": (
+        "The U.S. Constitution is the foundational law of the United States. "
+        "It establishes the structure of government, defines powers, and protects rights through amendments including the Bill of Rights."
+    ),
+    "america": (
+        "America, commonly referring to the United States, is a federal republic of 50 states. "
+        "Its government is based on the Constitution and includes legislative, executive, and judicial branches."
+    ),
+}
+
+# Common query aliases and misspellings normalized before matching/searching.
+TERM_ALIASES = {
+    "constiution": "constitution",
+    "us": "america",
+    "u.s": "america",
+    "u.s.": "america",
+    "united states": "america",
+    "united states of america": "america",
 }
 
 
@@ -75,6 +93,12 @@ def is_low_quality_ai_response(text: str) -> bool:
     if not t:
         return True
     return any(pattern in t for pattern in LOW_QUALITY_PATTERNS)
+
+
+def normalize_term(term: str) -> str:
+    """Normalize term aliases and common misspellings."""
+    cleaned = " ".join((term or "").strip().lower().split())
+    return TERM_ALIASES.get(cleaned, cleaned)
 
 # ---------------------------------------------------------------------------
 # FTP helpers
@@ -97,7 +121,7 @@ def extract_priority_terms(query: str, stop_words: set) -> List[str]:
     priority: List[str] = []
 
     for token in tokens_original:
-        normalized = token.strip().lower()
+        normalized = normalize_term(token)
         if len(normalized) < 3 or normalized in stop_words:
             continue
 
@@ -204,8 +228,6 @@ def ftp_load_knowledge_for_search(max_files: Optional[int] = None) -> List[dict]
     try:
         try:
 
-            # Keyword-first anchors: important terms should match before sentence-level similarity.
-            priority_terms = extract_priority_terms(query, stop_words)
             ftp.cwd(FTP_BRAIN_DIR)
         except ftplib.error_perm:
             return []
@@ -312,9 +334,6 @@ def ftp_load_knowledge_for_search(max_files: Optional[int] = None) -> List[dict]
 def ftp_append_conversation(user_message: str, ai_response: str, memory_state: dict) -> bool:
     """
     Append a conversation to today's daily file on FTP.
-                combined_words = set(re.findall(r"\w+", combined))
-
-                # Step 1: require at least one priority-term match when such terms exist.
     Creates the file if it doesn't exist.
     """
     try:
@@ -368,7 +387,11 @@ def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict
         conversations = ftp_load_knowledge_for_search(max_files=max_files)
 
         # Extract keywords from query (longer words, meaningful words weighted higher)
-        query_words_all = [w.lower() for w in re.findall(r"\w+", query.lower()) if w not in stop_words and len(w) > 2]
+        query_words_all = [
+            normalize_term(w)
+            for w in re.findall(r"\w+", query.lower())
+            if w not in stop_words and len(w) > 2
+        ]
         if not query_words_all:
             return []
 
@@ -421,8 +444,8 @@ def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict
             if priority_matches:
                 score += 8.0 * len(set(priority_matches))
 
-            # Only include if at least 2 key query words matched or >40% of unique query keywords
-            min_matches = max(2, len(query_keywords) // 2)
+            # Allow one-keyword topic prompts (e.g., "Constitution", "America") to match.
+            min_matches = max(1, len(query_keywords) // 2)
             if len(set(matches)) >= min_matches:
                 scored.append((score, len(set(matches)), conv))
 
@@ -472,9 +495,15 @@ def generate_memory_response(prompt: str, memory: dict, relevant: List[dict]) ->
         return "I am based in Maryland."
 
     # Handle common "what is <term>" prompts with concise factual definitions.
-    term_match = re.fullmatch(r"\s*what\s+is\s+([a-z0-9\-\s]+)\??\s*", lower)
+    term_match = re.fullmatch(r"\s*what\s+is\s+([a-z0-9\-\s\.]+)\??\s*", lower)
     if term_match:
-        term = " ".join(term_match.group(1).split())
+        term = normalize_term(term_match.group(1))
+        if term in BASIC_TERM_DEFINITIONS:
+            return BASIC_TERM_DEFINITIONS[term]
+
+    about_match = re.fullmatch(r"\s*(?:what\s+about|tell\s+me\s+about)\s+([a-z0-9\-\s\.]+)\??\s*", lower)
+    if about_match:
+        term = normalize_term(about_match.group(1))
         if term in BASIC_TERM_DEFINITIONS:
             return BASIC_TERM_DEFINITIONS[term]
 
