@@ -15,6 +15,7 @@ import json
 import ftplib
 import io
 import re
+import time
 import threading
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -40,10 +41,20 @@ FTP_USER = os.environ.get("FTP_USER", "PeakeCoin")
 FTP_PASSWORD = os.environ.get("FTP_PASSWORD", "Peake410")
 FTP_BRAIN_DIR = os.environ.get("FTP_BRAIN_DIR", "/ai/brain")
 SEARCH_MAX_FILES = int(os.environ.get("SEARCH_MAX_FILES", "0"))
+FTP_AI_KNOW_DIR = os.environ.get("FTP_AI_KNOW_DIR", f"{FTP_BRAIN_DIR}/ai_know")
+TERM_KNOWLEDGE_FILE = os.environ.get("TERM_KNOWLEDGE_FILE", "term_knowledge.json")
+TERM_CACHE_TTL_SECONDS = int(os.environ.get("TERM_CACHE_TTL_SECONDS", "300"))
 
 # In-memory cache to reduce FTP round-trips
 _cache: Dict[str, dict] = {}
 _cache_lock = threading.Lock()
+
+# In-memory cache for FTP-driven term aliases/definitions.
+_term_knowledge_cache: Dict[str, object] = {
+    "loaded_at": 0.0,
+    "data": {"aliases": {}, "definitions": {}},
+}
+_term_knowledge_lock = threading.Lock()
 
 # Responses matching these patterns are considered low-quality memory and
 # should not be selected as knowledge answers.
@@ -56,38 +67,6 @@ LOW_QUALITY_PATTERNS = [
     "ai unavailable",
 ]
 
-# Small built-in glossary for high-frequency foundational terms.
-# This avoids persisting fallback loops for common "what is" questions.
-BASIC_TERM_DEFINITIONS = {
-    "bitcoin": (
-        "Bitcoin is a decentralized digital currency that runs on a public blockchain. "
-        "It is not controlled by a central bank and transactions are verified by a distributed network."
-    ),
-    "hive": (
-        "Hive is a decentralized blockchain and social ecosystem used for content, communities, and apps. "
-        "It uses on-chain accounts and rewards activity through native tokens."
-    ),
-    "constitution": (
-        "The U.S. Constitution is the foundational law of the United States. "
-        "It establishes the structure of government, defines powers, and protects rights through amendments including the Bill of Rights."
-    ),
-    "america": (
-        "America, commonly referring to the United States, is a federal republic of 50 states. "
-        "Its government is based on the Constitution and includes legislative, executive, and judicial branches."
-    ),
-}
-
-# Common query aliases and misspellings normalized before matching/searching.
-TERM_ALIASES = {
-    "constiution": "constitution",
-    "us": "america",
-    "u.s": "america",
-    "u.s.": "america",
-    "united states": "america",
-    "united states of america": "america",
-}
-
-
 def is_low_quality_ai_response(text: str) -> bool:
     t = (text or "").strip().lower()
     if not t:
@@ -95,10 +74,72 @@ def is_low_quality_ai_response(text: str) -> bool:
     return any(pattern in t for pattern in LOW_QUALITY_PATTERNS)
 
 
-def normalize_term(term: str) -> str:
-    """Normalize term aliases and common misspellings."""
+def normalize_term(term: str, aliases: Optional[Dict[str, str]] = None) -> str:
+    """Normalize whitespace/case and apply optional alias mapping from FTP config."""
     cleaned = " ".join((term or "").strip().lower().split())
-    return TERM_ALIASES.get(cleaned, cleaned)
+    if aliases:
+        return aliases.get(cleaned, cleaned)
+    return cleaned
+
+
+def ftp_load_term_knowledge(force_refresh: bool = False) -> Dict[str, Dict[str, str]]:
+    """Load term aliases/definitions from FTP ai_know directory.
+
+    Expected FTP JSON structure:
+    {
+      "aliases": {"constiution": "constitution"},
+      "definitions": {"constitution": "..."}
+    }
+    """
+    now = time.time()
+    with _term_knowledge_lock:
+        loaded_at = float(_term_knowledge_cache.get("loaded_at", 0.0) or 0.0)
+        cached_data = _term_knowledge_cache.get("data", {"aliases": {}, "definitions": {}})
+        if (
+            not force_refresh
+            and isinstance(cached_data, dict)
+            and (now - loaded_at) < TERM_CACHE_TTL_SECONDS
+        ):
+            return cached_data  # type: ignore[return-value]
+
+    remote_path = f"{FTP_AI_KNOW_DIR.rstrip('/')}/{TERM_KNOWLEDGE_FILE}"
+    loaded = {"aliases": {}, "definitions": {}}
+    ftp = _ftp_connect()
+    try:
+        buf = io.BytesIO()
+        ftp.retrbinary(f"RETR {remote_path}", buf.write)
+        buf.seek(0)
+        data = json.loads(buf.read().decode("utf-8"))
+        if isinstance(data, dict):
+            raw_aliases = data.get("aliases", {})
+            raw_definitions = data.get("definitions", {})
+
+            if isinstance(raw_aliases, dict):
+                aliases: Dict[str, str] = {}
+                for k, v in raw_aliases.items():
+                    key = str(k or "").strip().lower()
+                    val = str(v or "").strip().lower()
+                    if key and val:
+                        aliases[key] = val
+                loaded["aliases"] = aliases
+
+            if isinstance(raw_definitions, dict):
+                definitions: Dict[str, str] = {}
+                for k, v in raw_definitions.items():
+                    key = str(k or "").strip().lower()
+                    val = str(v or "").strip()
+                    if key and val:
+                        definitions[key] = val
+                loaded["definitions"] = definitions
+    except Exception as exc:
+        print(f"[knowledge_server] WARN: could not load term knowledge from FTP: {exc}")
+    finally:
+        ftp.quit()
+
+    with _term_knowledge_lock:
+        _term_knowledge_cache["loaded_at"] = now
+        _term_knowledge_cache["data"] = loaded
+    return loaded
 
 # ---------------------------------------------------------------------------
 # FTP helpers
@@ -112,7 +153,7 @@ def _ftp_connect() -> ftplib.FTP:  # type: ignore[type-arg]
     ftp.set_pasv(True)
     return ftp
 
-def extract_priority_terms(query: str, stop_words: set) -> List[str]:
+def extract_priority_terms(query: str, stop_words: set, aliases: Dict[str, str]) -> List[str]:
     """Extract important terms that should be matched before sentence-level scoring."""
     if not query:
         return []
@@ -121,7 +162,7 @@ def extract_priority_terms(query: str, stop_words: set) -> List[str]:
     priority: List[str] = []
 
     for token in tokens_original:
-        normalized = normalize_term(token)
+        normalized = normalize_term(token, aliases)
         if len(normalized) < 3 or normalized in stop_words:
             continue
 
@@ -366,7 +407,11 @@ def ftp_append_conversation(user_message: str, ai_response: str, memory_state: d
         return False
 
 
-def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict]:
+def ftp_search_relevant_knowledge(
+    query: str,
+    max_results: int = 5,
+    term_knowledge: Optional[Dict[str, Dict[str, str]]] = None,
+) -> List[dict]:
     """
     Search conversations across FTP knowledge files.
     Uses keyword importance scoring with TF-IDF-like weighting.
@@ -383,12 +428,15 @@ def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict
     }
 
     try:
+        term_knowledge = term_knowledge or ftp_load_term_knowledge()
+        aliases = term_knowledge.get("aliases", {}) if isinstance(term_knowledge, dict) else {}
+
         max_files = SEARCH_MAX_FILES if SEARCH_MAX_FILES > 0 else None
         conversations = ftp_load_knowledge_for_search(max_files=max_files)
 
         # Extract keywords from query (longer words, meaningful words weighted higher)
         query_words_all = [
-            normalize_term(w)
+            normalize_term(w, aliases)
             for w in re.findall(r"\w+", query.lower())
             if w not in stop_words and len(w) > 2
         ]
@@ -396,7 +444,7 @@ def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict
             return []
 
         # Keyword-first anchors: important terms should match before sentence-level similarity.
-        priority_terms = extract_priority_terms(query, stop_words)
+        priority_terms = extract_priority_terms(query, stop_words, aliases)
 
         # Prioritize longer, more specific keywords
         query_keywords = {}
@@ -464,7 +512,12 @@ def _word_set(text: str) -> set:
     return set(re.findall(r"\w+", text.lower()))
 
 
-def generate_memory_response(prompt: str, memory: dict, relevant: List[dict]) -> str:
+def generate_memory_response(
+    prompt: str,
+    memory: dict,
+    relevant: List[dict],
+    term_knowledge: Optional[Dict[str, Dict[str, str]]] = None,
+) -> str:
     """Generate a response from memory and relevant prior conversations.
     Can combine multiple relevant results for a more complete answer."""
     lower = prompt.strip().lower()
@@ -494,18 +547,22 @@ def generate_memory_response(prompt: str, memory: dict, relevant: List[dict]) ->
     ):
         return "I am based in Maryland."
 
+    term_knowledge = term_knowledge or ftp_load_term_knowledge()
+    aliases = term_knowledge.get("aliases", {}) if isinstance(term_knowledge, dict) else {}
+    definitions = term_knowledge.get("definitions", {}) if isinstance(term_knowledge, dict) else {}
+
     # Handle common "what is <term>" prompts with concise factual definitions.
     term_match = re.fullmatch(r"\s*what\s+is\s+([a-z0-9\-\s\.]+)\??\s*", lower)
     if term_match:
-        term = normalize_term(term_match.group(1))
-        if term in BASIC_TERM_DEFINITIONS:
-            return BASIC_TERM_DEFINITIONS[term]
+        term = normalize_term(term_match.group(1), aliases)
+        if term in definitions:
+            return definitions[term]
 
     about_match = re.fullmatch(r"\s*(?:what\s+about|tell\s+me\s+about)\s+([a-z0-9\-\s\.]+)\??\s*", lower)
     if about_match:
-        term = normalize_term(about_match.group(1))
-        if term in BASIC_TERM_DEFINITIONS:
-            return BASIC_TERM_DEFINITIONS[term]
+        term = normalize_term(about_match.group(1), aliases)
+        if term in definitions:
+            return definitions[term]
 
     # Defensive cleanup in case a low-quality answer still slips in.
     relevant = [r for r in relevant if not is_low_quality_ai_response(r.get("ai_response", ""))]
@@ -814,6 +871,9 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             try:
                 with _cache_lock:
                     _cache.clear()
+                with _term_knowledge_lock:
+                    _term_knowledge_cache["loaded_at"] = 0.0
+                    _term_knowledge_cache["data"] = {"aliases": {}, "definitions": {}}
                 files = ftp_list_knowledge()
                 self._send(200, {"ok": True, "message": "Cache cleared", "available": len(files)})
             except Exception as exc:
@@ -834,9 +894,11 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 self._send(400, {"error": "Field 'prompt' is required"})
                 return
 
+            term_knowledge = ftp_load_term_knowledge()
+
             # Search FTP knowledge base for relevant past exchanges
-            relevant = ftp_search_relevant_knowledge(prompt, max_results=5)
-            ai_response = generate_memory_response(prompt, memory, relevant)
+            relevant = ftp_search_relevant_knowledge(prompt, max_results=5, term_knowledge=term_knowledge)
+            ai_response = generate_memory_response(prompt, memory, relevant, term_knowledge=term_knowledge)
             verification = verify_response(prompt, ai_response, relevant) if ENABLE_CROSS_VERIFY else {
                 "enabled": False,
                 "passed": True,

@@ -1,0 +1,16 @@
+{
+  "aliases": {
+    "constiution": "constitution",
+    "us": "america",
+    "u.s": "america",
+    "u.s.": "america",
+    "united states": "america",
+    "united states of america": "america"
+  },
+  "definitions": {
+    "bitcoin": "Bitcoin is a decentralized digital currency that runs on a public blockchain.",
+    "hive": "Hive is a decentralized blockchain and social ecosystem used for content, communities, and apps.",
+    "constitution": "The U.S. Constitution is the foundational law of the United States and defines government powers and rights.",
+    "america": "America, commonly the United States, is a federal republic of 50 states with constitutional government."
+  }
+}
