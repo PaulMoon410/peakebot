@@ -28,6 +28,7 @@ from urllib.parse import urlparse, parse_qs
 
 KNOWLEDGE_ENGINE = os.environ.get("KNOWLEDGE_ENGINE", "memory-retrieval")
 ENABLE_CROSS_VERIFY = os.environ.get("ENABLE_CROSS_VERIFY", "true").lower() != "false"
+BOT_NAME = os.environ.get("BOT_NAME", "Chessie")
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -71,6 +72,7 @@ LOW_QUALITY_PATTERNS = [
     "node proxy error",
     "python memory engine unavailable",
     "ai unavailable",
+    "knowledge base loaded with comprehensive facts",
 ]
 
 def is_low_quality_ai_response(text: str) -> bool:
@@ -565,9 +567,23 @@ def generate_memory_response(
         "where are you from" in lower
         or "where were you founded" in lower
         or "where were you made" in lower
+        or "where are you located" in lower
+        or "where are you" == lower
+        or "where are you?" == lower
+        or "where you located" in lower
+        or "your location" in lower
         or ("founded" in lower and "where" in lower)
     ):
         return "I am based in Maryland."
+
+    if (
+        "what is your name" in lower
+        or "what's your name" in lower
+        or "who are you" in lower
+        or "your name" == lower
+        or "your name?" == lower
+    ):
+        return f"My name is {BOT_NAME}."
 
     term_knowledge = term_knowledge or ftp_load_term_knowledge()
     aliases = term_knowledge.get("aliases", {}) if isinstance(term_knowledge, dict) else {}
