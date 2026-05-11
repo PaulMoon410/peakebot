@@ -673,6 +673,22 @@ def _word_set(text: str) -> set:
     return set(re.findall(r"\w+", text.lower()))
 
 
+def _is_relevant_to_question(question: str, answer: str) -> bool:
+    """Quick check: does the answer mention key concepts from the question?
+    Prevents returning completely off-topic results."""
+    stop = {"a", "an", "the", "is", "are", "be", "in", "on", "at", "to", "for", "of", "and", "or", "what", "where", "best"}
+    q_words = [w for w in re.findall(r"\w+", question.lower()) if w not in stop and len(w) > 3]
+    if not q_words:
+        return True  # Can't judge, assume OK
+    
+    a_lower = answer.lower()
+    matching_keywords = sum(1 for w in q_words if w in a_lower)
+    
+    # Require at least 25% of significant keywords to match (or at least 1 if very few keywords)
+    min_required = max(1, len(q_words) // 4)
+    return matching_keywords >= min_required
+
+
 def generate_memory_response(
     prompt: str,
     memory: dict,
@@ -743,31 +759,39 @@ def generate_memory_response(
     relevant = [r for r in relevant if not is_low_quality_ai_response(r.get("ai_response", ""))]
 
     if relevant:
-        # Check if we have multiple complementary results to combine
-        if len(relevant) >= 2:
-            first = relevant[0]
-            second = relevant[1]
-            
-            first_q = first.get("user_message", "").strip()
-            first_a = first.get("ai_response", "").strip()
-            second_q = second.get("user_message", "").strip()
-            second_a = second.get("ai_response", "").strip()
-            
-            # If both are relevant and different enough, combine them
-            if first_a and second_a and first_a.lower() != second_a.lower():
-                # Return direct factual content instead of template wrappers.
-                return f"{first_a}\n\nRelated info: {second_a}"
-        
-        # Use single best result
+        # Use single best result only (no combining to keep responses concise)
         best = relevant[0]
         best_q = best.get("user_message", "").strip()
         best_a = best.get("ai_response", "").strip()
 
         if best_a:
-            if best_q and best_q.lower() != lower:
-                # Return the best known answer directly to avoid recursive memory loops.
+            # Only return if actually relevant to the question
+            if not _is_relevant_to_question(prompt, best_a):
+                # Result is off-topic; fall through to fallback response
+                pass
+            elif best_q and best_q.lower() != lower:
+                # Truncate to first 2-3 sentences for conciseness
+                sentences = best_a.split(". ")
+                if len(sentences) > 3:
+                    truncated = ". ".join(sentences[:3]).rstrip() + "."
+                    if len(truncated) > 300:
+                        truncated = truncated[:300].rsplit(" ", 1)[0] + "..."
+                    return truncated
+                # Cap at 300 characters to avoid verbose AI rambling
+                if len(best_a) > 300:
+                    return best_a[:300].rsplit(" ", 1)[0] + "..."
                 return best_a
-            return best_a
+            else:
+                # Same question; truncate and return
+                sentences = best_a.split(". ")
+                if len(sentences) > 3:
+                    truncated = ". ".join(sentences[:3]).rstrip() + "."
+                    if len(truncated) > 300:
+                        truncated = truncated[:300].rsplit(" ", 1)[0] + "..."
+                    return truncated
+                if len(best_a) > 300:
+                    return best_a[:300].rsplit(" ", 1)[0] + "..."
+                return best_a
 
     facts = memory.get("facts") if isinstance(memory, dict) else []
     if isinstance(facts, list) and facts:
