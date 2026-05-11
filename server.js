@@ -6,8 +6,25 @@ const { URL } = require("url");
 const { spawn } = require("child_process");
 
 const PORT = process.env.PORT || 3000;
-const PYTHON_KNOWLEDGE_SERVER = process.env.PYTHON_KNOWLEDGE_SERVER || "http://localhost:5001";
 const PYTHON_PORT = parseInt(process.env.PYTHON_PORT || "5001", 10);
+const PYTHON_HOST = process.env.PYTHON_HOST || "127.0.0.1";
+
+function normalizePythonServerUrl(rawUrl) {
+  try {
+    const parsed = new URL(rawUrl);
+    // Render can resolve localhost to IPv6 first; force IPv4 loopback for Python sidecar.
+    if (parsed.hostname === "localhost") {
+      parsed.hostname = "127.0.0.1";
+    }
+    return parsed.origin;
+  } catch {
+    return `http://${PYTHON_HOST}:${PYTHON_PORT}`;
+  }
+}
+
+const PYTHON_KNOWLEDGE_SERVER = normalizePythonServerUrl(
+  process.env.PYTHON_KNOWLEDGE_SERVER || `http://${PYTHON_HOST}:${PYTHON_PORT}`,
+);
 const START_PYTHON_SERVER = process.env.START_PYTHON_SERVER !== "false";
 const FTP_BRAIN_DIR = process.env.FTP_BRAIN_DIR || "/ai/brain";
 
@@ -513,6 +530,7 @@ function startPythonServer() {
       env: {
         ...process.env,
         PYTHON_PORT: String(PYTHON_PORT),
+        PYTHON_HOST,
         FTP_HOST: process.env.FTP_HOST || "ftp.geocities.ws",
         FTP_USER: process.env.FTP_USER || "PeakeCoin",
         FTP_PASSWORD: process.env.FTP_PASSWORD || "Peake410",
