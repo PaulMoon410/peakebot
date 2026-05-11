@@ -15,6 +15,7 @@ import json
 import ftplib
 import io
 import re
+import subprocess
 import time
 import threading
 from datetime import datetime, timezone
@@ -46,6 +47,19 @@ FTP_AI_KNOW_DIR = os.environ.get("FTP_AI_KNOW_DIR", FTP_BRAIN_DIR)
 TERM_KNOWLEDGE_FILE = os.environ.get("TERM_KNOWLEDGE_FILE", "term_knowledge.json")
 TERM_CACHE_TTL_SECONDS = int(os.environ.get("TERM_CACHE_TTL_SECONDS", "300"))
 SEARCH_CACHE_TTL_SECONDS = int(os.environ.get("SEARCH_CACHE_TTL_SECONDS", "120"))
+FACTCHECK_ENABLED = os.environ.get("FACTCHECK_ENABLED", "true").lower() != "false"
+FACTCHECK_INTERVAL_SECONDS = int(os.environ.get("FACTCHECK_INTERVAL_SECONDS", "1800"))
+FACTCHECK_MAX_ITEMS_PER_RUN = int(os.environ.get("FACTCHECK_MAX_ITEMS_PER_RUN", "5"))
+FACTCHECK_MAX_RESULTS = int(os.environ.get("FACTCHECK_MAX_RESULTS", "3"))
+FACTCHECK_IDLE_SECONDS = int(os.environ.get("FACTCHECK_IDLE_SECONDS", "180"))
+FACTCHECK_WHITELIST_HOSTS = os.environ.get(
+    "FACTCHECK_WHITELIST_HOSTS",
+    "wikipedia.org,britannica.com,congress.gov,state.gov,nih.gov,cdc.gov,nps.gov,edu,gov",
+)
+FACTCHECK_HEARTBEAT_PATH = os.environ.get(
+    "FACTCHECK_HEARTBEAT_PATH",
+    f"{FTP_BRAIN_DIR.rstrip('/')}/factcheck_heartbeat.json",
+)
 
 # In-memory cache to reduce FTP round-trips
 _cache: Dict[str, dict] = {}
@@ -62,6 +76,9 @@ _term_knowledge_lock = threading.Lock()
 # on every chat request.
 _search_corpus_cache: Dict[str, dict] = {}
 _search_corpus_lock = threading.Lock()
+
+_factcheck_process: Optional[subprocess.Popen] = None
+_factcheck_lock = threading.Lock()
 
 # Responses matching these patterns are considered low-quality memory and
 # should not be selected as knowledge answers.
@@ -162,6 +179,73 @@ def _ftp_connect() -> ftplib.FTP:  # type: ignore[type-arg]
     ftp.login(FTP_USER, FTP_PASSWORD)
     ftp.set_pasv(True)
     return ftp
+
+
+def touch_factcheck_heartbeat() -> None:
+    """Persist last chat activity marker so worker can crawl only when idle."""
+    try:
+        ftp = _ftp_connect()
+        _ensure_ftp_dir(ftp, os.path.dirname(FACTCHECK_HEARTBEAT_PATH) or "/")
+        payload = {
+            "last_chat_at": datetime.now(timezone.utc).isoformat(),
+            "source": "knowledge_server",
+        }
+        ftp.storbinary(
+            f"STOR {FACTCHECK_HEARTBEAT_PATH}",
+            io.BytesIO(json.dumps(payload, ensure_ascii=False).encode("utf-8")),
+        )
+        ftp.quit()
+    except Exception:
+        # Heartbeat is best-effort and should not block chat flow.
+        return
+
+
+def start_factcheck_worker() -> None:
+    """Launch the periodic fact-check worker subprocess if enabled."""
+    global _factcheck_process
+    if not FACTCHECK_ENABLED:
+        print("[knowledge_server] Fact-check worker disabled (FACTCHECK_ENABLED=false)")
+        return
+
+    worker_script = os.path.join(os.path.dirname(__file__), "factcheck_worker.py")
+    if not os.path.exists(worker_script):
+        print(f"[knowledge_server] Fact-check worker not found at {worker_script}")
+        return
+
+    with _factcheck_lock:
+        if _factcheck_process and _factcheck_process.poll() is None:
+            return
+
+        env = {
+            **os.environ,
+            "FACTCHECK_INTERVAL_SECONDS": str(FACTCHECK_INTERVAL_SECONDS),
+            "FACTCHECK_MAX_ITEMS_PER_RUN": str(FACTCHECK_MAX_ITEMS_PER_RUN),
+            "FACTCHECK_MAX_RESULTS": str(FACTCHECK_MAX_RESULTS),
+            "FACTCHECK_IDLE_SECONDS": str(FACTCHECK_IDLE_SECONDS),
+            "FACTCHECK_WHITELIST_HOSTS": FACTCHECK_WHITELIST_HOSTS,
+            "FACTCHECK_HEARTBEAT_PATH": FACTCHECK_HEARTBEAT_PATH,
+        }
+
+        _factcheck_process = subprocess.Popen(
+            ["python3", worker_script],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        print(f"[knowledge_server] Fact-check worker started: {worker_script}")
+
+
+def stop_factcheck_worker() -> None:
+    """Stop the periodic fact-check worker subprocess."""
+    global _factcheck_process
+    with _factcheck_lock:
+        if not _factcheck_process:
+            return
+        try:
+            _factcheck_process.terminate()
+        except Exception:
+            pass
+        _factcheck_process = None
 
 def extract_priority_terms(query: str, stop_words: set, aliases: Dict[str, str]) -> List[str]:
     """Extract important terms that should be matched before sentence-level scoring."""
@@ -700,8 +784,8 @@ def generate_memory_response(
             )
 
     return (
-        "I do not have a close prior conversation for that yet. "
-        "Tell me details and I will store this for future recall."
+        "I am still searching and verifying information for that. "
+        "Please provide a bit more detail, and I will keep improving stored facts."
     )
 
 
@@ -838,6 +922,10 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 "engine": KNOWLEDGE_ENGINE,
                 "cross_verify": ENABLE_CROSS_VERIFY,
                 "ftp_host": FTP_HOST,
+                "factcheck_enabled": FACTCHECK_ENABLED,
+                "factcheck_worker_running": bool(_factcheck_process and _factcheck_process.poll() is None),
+                "factcheck_interval_seconds": FACTCHECK_INTERVAL_SECONDS,
+                "factcheck_idle_seconds": FACTCHECK_IDLE_SECONDS,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             })
             return
@@ -942,6 +1030,8 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 self._send(400, {"error": "Fields 'user_message' and 'ai_response' are required"})
                 return
 
+            touch_factcheck_heartbeat()
+
             try:
                 # Append to today's daily file on FTP
                 ok = ftp_append_conversation(user_message, ai_response, memory_state)
@@ -986,6 +1076,8 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             if not prompt:
                 self._send(400, {"error": "Field 'prompt' is required"})
                 return
+
+            touch_factcheck_heartbeat()
 
             term_knowledge = ftp_load_term_knowledge()
 
@@ -1047,9 +1139,12 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     server = HTTPServer((PYTHON_HOST, PYTHON_PORT), KnowledgeHandler)
+    touch_factcheck_heartbeat()
+    start_factcheck_worker()
     print(f"[knowledge_server] Python knowledge server running on {PYTHON_HOST}:{PYTHON_PORT}")
     print(f"[knowledge_server] FTP host: {FTP_HOST}  |  brain dir: {FTP_BRAIN_DIR}")
     print(f"[knowledge_server] Engine: {KNOWLEDGE_ENGINE}  |  Cross verify: {ENABLE_CROSS_VERIFY}")
+    print(f"[knowledge_server] Fact-check worker enabled: {FACTCHECK_ENABLED}")
     print(f"[knowledge_server] Endpoints:")
     print(f"  GET    /health")
     print(f"  GET    /memory")
@@ -1064,4 +1159,6 @@ if __name__ == "__main__":
         server.serve_forever()
     except KeyboardInterrupt:
         print("\n[knowledge_server] Shutting down.")
+    finally:
+        stop_factcheck_worker()
         server.server_close()
