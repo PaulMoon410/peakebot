@@ -73,6 +73,8 @@ LOW_QUALITY_PATTERNS = [
     "python memory engine unavailable",
     "ai unavailable",
     "knowledge base loaded with comprehensive facts",
+    "this principle is widely taught in foundational materials",
+    "this point is often treated as a core concept",
 ]
 
 def is_low_quality_ai_response(text: str) -> bool:
@@ -190,6 +192,34 @@ def extract_priority_terms(query: str, stop_words: set, aliases: Dict[str, str])
             continue
         seen.add(term)
         deduped.append(term)
+    return deduped
+
+
+def extract_query_phrases(query: str, stop_words: set, aliases: Dict[str, str]) -> List[str]:
+    """Extract short normalized phrases to preserve sentence-level intent."""
+    raw_tokens = [
+        normalize_term(tok, aliases)
+        for tok in re.findall(r"[A-Za-z0-9\-]+", query)
+        if tok
+    ]
+    tokens = [t for t in raw_tokens if len(t) > 2 and t not in stop_words]
+    phrases: List[str] = []
+
+    # Build 2-3 word phrase windows for more precise intent matching.
+    for i in range(len(tokens)):
+        if i + 1 < len(tokens):
+            phrases.append(f"{tokens[i]} {tokens[i+1]}")
+        if i + 2 < len(tokens):
+            phrases.append(f"{tokens[i]} {tokens[i+1]} {tokens[i+2]}")
+
+    # De-duplicate preserving order.
+    seen = set()
+    deduped = []
+    for phrase in phrases:
+        if phrase in seen:
+            continue
+        seen.add(phrase)
+        deduped.append(phrase)
     return deduped
 
 
@@ -337,6 +367,18 @@ def ftp_load_knowledge_for_search(max_files: Optional[int] = None) -> List[dict]
 
             # Format B: object containing facts/conversations arrays
             elif isinstance(data, dict):
+                # Handle flat single-entry conversation JSON files.
+                flat_user = str(data.get("user_message") or data.get("user") or "").strip()
+                flat_ai = str(data.get("ai_response") or data.get("ai") or "").strip()
+                if flat_user or flat_ai:
+                    conversations.append({
+                        "timestamp": data.get("timestamp"),
+                        "user_message": flat_user,
+                        "ai_response": flat_ai,
+                        "source_file": filename,
+                        "entry_type": "flat_conversation",
+                    })
+
                 # Convert conversation objects if present.
                 file_conversations = data.get("conversations", [])
                 if isinstance(file_conversations, list):
@@ -469,6 +511,7 @@ def ftp_search_relevant_knowledge(
 
         # Keyword-first anchors: important terms should match before sentence-level similarity.
         priority_terms = extract_priority_terms(query, stop_words, aliases)
+        query_phrases = extract_query_phrases(query, stop_words, aliases)
 
         # Prioritize longer, more specific keywords
         query_keywords = {}
@@ -496,8 +539,14 @@ def ftp_search_relevant_knowledge(
                 for term in priority_terms:
                     if term in combined_words or term in combined:
                         priority_matches.append(term)
-                if not priority_matches:
-                    continue
+
+            phrase_matches = []
+            if query_phrases:
+                phrase_matches = [phrase for phrase in query_phrases if phrase in combined]
+
+            # For longer natural-language queries, require either anchor terms or phrase overlap.
+            if len(query_words_all) >= 4 and not priority_matches and not phrase_matches:
+                continue
 
             # Extract keywords from conversation (same method as query)
             conv_words = [w.lower() for w in re.findall(r"\w+", combined) if w not in stop_words and len(w) > 2]
@@ -516,13 +565,17 @@ def ftp_search_relevant_knowledge(
             if priority_matches:
                 score += 8.0 * len(set(priority_matches))
 
-            # Allow one-keyword topic prompts (e.g., "Constitution", "America") to match.
-            min_matches = max(1, len(query_keywords) // 2)
-            if len(set(matches)) >= min_matches:
-                scored.append((score, len(set(matches)), conv))
+            # Phrase overlap improves precision for sentence-structured prompts.
+            if phrase_matches:
+                score += 6.0 * len(set(phrase_matches))
 
-        scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
-        return [entry[2] for entry in scored[:max_results]]
+            # Allow one-keyword topic prompts (e.g., "Constitution", "America") to match.
+            min_matches = 1 if len(query_keywords) <= 3 else max(2, len(query_keywords) // 2)
+            if len(set(matches)) >= min_matches:
+                scored.append((score, len(set(matches)), len(set(phrase_matches)), conv))
+
+        scored.sort(key=lambda x: (x[0], x[2], x[1]), reverse=True)
+        return [entry[3] for entry in scored[:max_results]]
     except Exception as exc:
         print(f"[knowledge_server] ERROR searching daily knowledge: {exc}")
         return []
@@ -545,10 +598,6 @@ def generate_memory_response(
     """Generate a response from memory and relevant prior conversations.
     Can combine multiple relevant results for a more complete answer."""
     lower = prompt.strip().lower()
-
-    # Greeting intents should return natural chat responses, not recalled facts.
-    if re.fullmatch(r"\s*(hi|hello|hey|yo|good\s+morning|good\s+afternoon|good\s+evening)\s*[!.?]*\s*", lower):
-        return f"Hello! I am {BOT_NAME}. How can I help you today?"
 
     # Real-time date/time answers should bypass memory lookup.
     now_utc = datetime.now(timezone.utc)

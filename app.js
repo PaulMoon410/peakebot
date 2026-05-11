@@ -405,7 +405,7 @@ async function handleChatSubmit(event) {
 
   addMessage("user", prompt);
   elements.chatInput.value = "";
-  setStatus("AI is thinking...");
+  setStatus("Searching knowledge for relevant information... Please be patient.");
   
   try {
     const response = await generateReply(prompt);
