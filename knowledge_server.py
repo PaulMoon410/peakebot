@@ -41,7 +41,7 @@ FTP_USER = os.environ.get("FTP_USER", "PeakeCoin")
 FTP_PASSWORD = os.environ.get("FTP_PASSWORD", "Peake410")
 FTP_BRAIN_DIR = os.environ.get("FTP_BRAIN_DIR", "/ai/brain")
 SEARCH_MAX_FILES = int(os.environ.get("SEARCH_MAX_FILES", "0"))
-FTP_AI_KNOW_DIR = os.environ.get("FTP_AI_KNOW_DIR", f"{FTP_BRAIN_DIR}/ai_know")
+FTP_AI_KNOW_DIR = os.environ.get("FTP_AI_KNOW_DIR", FTP_BRAIN_DIR)
 TERM_KNOWLEDGE_FILE = os.environ.get("TERM_KNOWLEDGE_FILE", "term_knowledge.json")
 TERM_CACHE_TTL_SECONDS = int(os.environ.get("TERM_CACHE_TTL_SECONDS", "300"))
 
