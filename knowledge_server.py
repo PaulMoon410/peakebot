@@ -87,6 +87,37 @@ def _ftp_connect() -> ftplib.FTP:  # type: ignore[type-arg]
     ftp.set_pasv(True)
     return ftp
 
+def extract_priority_terms(query: str, stop_words: set) -> List[str]:
+    """Extract important terms that should be matched before sentence-level scoring."""
+    if not query:
+        return []
+
+    tokens_original = re.findall(r"[A-Za-z0-9\-]+", query)
+    priority: List[str] = []
+
+    for token in tokens_original:
+        normalized = token.strip().lower()
+        if len(normalized) < 3 or normalized in stop_words:
+            continue
+
+        # Prioritize likely entities/keywords: capitalized words, mixed tokens, and longer nouns.
+        is_capitalized = token[:1].isupper()
+        is_mixed = any(c.isdigit() for c in token) or "-" in token
+        is_long = len(normalized) >= 7
+
+        if is_capitalized or is_mixed or is_long:
+            priority.append(normalized)
+
+    # Keep order and remove duplicates.
+    seen = set()
+    deduped = []
+    for term in priority:
+        if term in seen:
+            continue
+        seen.add(term)
+        deduped.append(term)
+    return deduped
+
 
 def _ensure_ftp_dir(ftp: ftplib.FTP, directory: str) -> None:  # type: ignore[type-arg]
     """Create remote directory if it doesn't exist."""
@@ -171,6 +202,9 @@ def ftp_load_knowledge_for_search(max_files: Optional[int] = None) -> List[dict]
     ftp = _ftp_connect()
     try:
         try:
+
+            # Keyword-first anchors: important terms should match before sentence-level similarity.
+            priority_terms = extract_priority_terms(query, stop_words)
             ftp.cwd(FTP_BRAIN_DIR)
         except ftplib.error_perm:
             return []
@@ -277,6 +311,9 @@ def ftp_load_knowledge_for_search(max_files: Optional[int] = None) -> List[dict]
 def ftp_append_conversation(user_message: str, ai_response: str, memory_state: dict) -> bool:
     """
     Append a conversation to today's daily file on FTP.
+                combined_words = set(re.findall(r"\w+", combined))
+
+                # Step 1: require at least one priority-term match when such terms exist.
     Creates the file if it doesn't exist.
     """
     try:
@@ -324,25 +361,28 @@ def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict
         "i", "me", "my", "we", "us", "our", "just", "very", "more", "most",
         "then", "than", "there", "here", "other", "such", "no", "not", "so"
     }
-    
+
     try:
         max_files = SEARCH_MAX_FILES if SEARCH_MAX_FILES > 0 else None
         conversations = ftp_load_knowledge_for_search(max_files=max_files)
-        
+
         # Extract keywords from query (longer words, meaningful words weighted higher)
         query_words_all = [w.lower() for w in re.findall(r"\w+", query.lower()) if w not in stop_words and len(w) > 2]
         if not query_words_all:
             return []
-        
+
+        # Keyword-first anchors: important terms should match before sentence-level similarity.
+        priority_terms = extract_priority_terms(query, stop_words)
+
         # Prioritize longer, more specific keywords
         query_keywords = {}
         for word in query_words_all:
             # Weight longer words more heavily (they're more specific)
             weight = len(word) / 10.0 + 1.0
             query_keywords[word] = query_keywords.get(word, 0) + weight
-        
+
         scored = []
-        
+
         for conv in conversations:
             user_msg = conv.get("search_text", conv.get("user_message", ""))
             ai_msg = conv.get("ai_response", "")
@@ -352,10 +392,20 @@ def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict
                 continue
 
             combined = (user_msg + " " + ai_msg).lower()
-            
+            combined_words = set(re.findall(r"\w+", combined))
+
+            # Step 1: require at least one priority-term match when such terms exist.
+            priority_matches = []
+            if priority_terms:
+                for term in priority_terms:
+                    if term in combined_words or term in combined:
+                        priority_matches.append(term)
+                if not priority_matches:
+                    continue
+
             # Extract keywords from conversation (same method as query)
             conv_words = [w.lower() for w in re.findall(r"\w+", combined) if w not in stop_words and len(w) > 2]
-            
+
             # Calculate match score - emphasis on matching important keywords
             score = 0.0
             matches = []
@@ -365,12 +415,16 @@ def ftp_search_relevant_knowledge(query: str, max_results: int = 5) -> List[dict
                     freq = min(conv_words.count(keyword), 3)
                     score += weight * freq
                     matches.append(keyword)
-            
+
+            # Boost exact priority-term matches heavily so anchor concepts win first.
+            if priority_matches:
+                score += 8.0 * len(set(priority_matches))
+
             # Only include if at least 2 key query words matched or >40% of unique query keywords
             min_matches = max(2, len(query_keywords) // 2)
             if len(set(matches)) >= min_matches:
                 scored.append((score, len(set(matches)), conv))
-        
+
         scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
         return [entry[2] for entry in scored[:max_results]]
     except Exception as exc:
