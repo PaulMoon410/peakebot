@@ -563,6 +563,7 @@ const server = http.createServer(async (req, res) => {
 // ---------------------------------------------------------------------------
 
 let pythonProcess = null;
+let isShuttingDown = false;
 
 function startPythonServer() {
   if (!START_PYTHON_SERVER) {
@@ -636,6 +637,22 @@ function stopPythonServer() {
   }
 }
 
+function shutdown(signalName) {
+  if (isShuttingDown) {
+    console.log(`[main] ${signalName} received again; shutdown already in progress.`);
+    return;
+  }
+
+  isShuttingDown = true;
+  console.log(`[main] ${signalName} received, shutting down...`);
+  stopPythonServer();
+
+  server.close(() => {
+    console.log("[main] Server closed.");
+    process.exit(0);
+  });
+}
+
 // Start Node.js server after Python is ready
 (async () => {
   try {
@@ -655,21 +672,7 @@ function stopPythonServer() {
 })();
 
 // Graceful shutdown
-process.on("SIGTERM", () => {
-  console.log("[main] SIGTERM received, shutting down...");
-  stopPythonServer();
-  server.close(() => {
-    console.log("[main] Server closed.");
-    process.exit(0);
-  });
-});
+process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-process.on("SIGINT", () => {
-  console.log("[main] SIGINT received, shutting down...");
-  stopPythonServer();
-  server.close(() => {
-    console.log("[main] Server closed.");
-    process.exit(0);
-  });
-});
+process.on("SIGINT", () => shutdown("SIGINT"));
 
