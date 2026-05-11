@@ -111,6 +111,17 @@ textarea {
   color: var(--muted);
 }
 
+.startup-notice {
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid rgba(124, 156, 255, 0.35);
+  border-radius: 8px;
+  background: rgba(124, 156, 255, 0.12);
+  color: #d6e0ff;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
 .section-label {
   margin: 0;
   font-size: 0.9rem;
