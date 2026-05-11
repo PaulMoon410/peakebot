@@ -55,6 +55,19 @@ LOW_QUALITY_PATTERNS = [
     "ai unavailable",
 ]
 
+# Small built-in glossary for high-frequency foundational terms.
+# This avoids persisting fallback loops for common "what is" questions.
+BASIC_TERM_DEFINITIONS = {
+    "bitcoin": (
+        "Bitcoin is a decentralized digital currency that runs on a public blockchain. "
+        "It is not controlled by a central bank and transactions are verified by a distributed network."
+    ),
+    "hive": (
+        "Hive is a decentralized blockchain and social ecosystem used for content, communities, and apps. "
+        "It uses on-chain accounts and rewards activity through native tokens."
+    ),
+}
+
 
 def is_low_quality_ai_response(text: str) -> bool:
     t = (text or "").strip().lower()
@@ -402,6 +415,13 @@ def generate_memory_response(prompt: str, memory: dict, relevant: List[dict]) ->
         or ("founded" in lower and "where" in lower)
     ):
         return "I am based in Maryland."
+
+    # Handle common "what is <term>" prompts with concise factual definitions.
+    term_match = re.fullmatch(r"\s*what\s+is\s+([a-z0-9\-\s]+)\??\s*", lower)
+    if term_match:
+        term = " ".join(term_match.group(1).split())
+        if term in BASIC_TERM_DEFINITIONS:
+            return BASIC_TERM_DEFINITIONS[term]
 
     # Defensive cleanup in case a low-quality answer still slips in.
     relevant = [r for r in relevant if not is_low_quality_ai_response(r.get("ai_response", ""))]
@@ -752,14 +772,18 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             daily_file = None
             ftp_error = None
             try:
-                ok = ftp_append_conversation(prompt, ai_response, memory)
-                if ok:
-                    ftp_saved = True
-                    daily_file = ftp_get_daily_filename()
-                    print(f"[knowledge_server] Chat appended to {daily_file}")
+                if is_low_quality_ai_response(ai_response):
+                    ftp_error = "Skipped saving low-quality fallback response"
+                    print("[knowledge_server] Skipped saving low-quality fallback response")
                 else:
-                    ftp_error = "Failed to append to FTP"
-                    print(f"[knowledge_server] WARNING: could not append to FTP")
+                    ok = ftp_append_conversation(prompt, ai_response, memory)
+                    if ok:
+                        ftp_saved = True
+                        daily_file = ftp_get_daily_filename()
+                        print(f"[knowledge_server] Chat appended to {daily_file}")
+                    else:
+                        ftp_error = "Failed to append to FTP"
+                        print(f"[knowledge_server] WARNING: could not append to FTP")
             except Exception as exc:
                 ftp_error = str(exc)
                 print(f"[knowledge_server] WARNING: FTP append failed: {exc}")
