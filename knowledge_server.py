@@ -33,6 +33,7 @@ ENABLE_CROSS_VERIFY = os.environ.get("ENABLE_CROSS_VERIFY", "true").lower() != "
 # ---------------------------------------------------------------------------
 
 PYTHON_PORT = int(os.environ.get("PYTHON_PORT", 5001))
+PYTHON_HOST = os.environ.get("PYTHON_HOST", "127.0.0.1")
 
 FTP_HOST = os.environ.get("FTP_HOST", "ftp.geocities.ws")
 FTP_USER = os.environ.get("FTP_USER", "PeakeCoin")
@@ -861,8 +862,8 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    server = HTTPServer(("0.0.0.0", PYTHON_PORT), KnowledgeHandler)
-    print(f"[knowledge_server] Python knowledge server running on port {PYTHON_PORT}")
+    server = HTTPServer((PYTHON_HOST, PYTHON_PORT), KnowledgeHandler)
+    print(f"[knowledge_server] Python knowledge server running on {PYTHON_HOST}:{PYTHON_PORT}")
     print(f"[knowledge_server] FTP host: {FTP_HOST}  |  brain dir: {FTP_BRAIN_DIR}")
     print(f"[knowledge_server] Engine: {KNOWLEDGE_ENGINE}  |  Cross verify: {ENABLE_CROSS_VERIFY}")
     print(f"[knowledge_server] Endpoints:")
