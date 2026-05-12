@@ -32,6 +32,7 @@ FACTCHECK_WHITELIST_HOSTS = [h.strip().lower() for h in os.environ.get("FACTCHEC
 FACTCHECK_HEARTBEAT_PATH = os.environ.get("FACTCHECK_HEARTBEAT_PATH", f"{FTP_BRAIN_DIR.rstrip('/')}/factcheck_heartbeat.json")
 FACTCHECK_STATE_PATH = os.environ.get("FACTCHECK_STATE_PATH", f"{FTP_BRAIN_DIR.rstrip('/')}/factcheck_state.json")
 FACTCHECK_FACTS_PATH = os.environ.get("FACTCHECK_FACTS_PATH", f"{FTP_BRAIN_DIR.rstrip('/')}/factcheck_facts.json")
+FACTCHECK_WORKER_STATUS_PATH = os.environ.get("FACTCHECK_WORKER_STATUS_PATH", "/tmp/factcheck_worker_status.json")
 
 
 def _ftp_connect() -> ftplib.FTP:  # type: ignore[type-arg]
@@ -78,6 +79,15 @@ def ftp_write_json(path: str, payload) -> bool:
         return False
     finally:
         ftp.quit()
+
+
+def write_worker_status(payload: dict) -> None:
+    try:
+        os.makedirs(os.path.dirname(FACTCHECK_WORKER_STATUS_PATH) or ".", exist_ok=True)
+        with open(FACTCHECK_WORKER_STATUS_PATH, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+    except Exception:
+        return
 
 
 def is_whitelisted(url: str) -> bool:
@@ -213,9 +223,21 @@ def is_idle() -> bool:
     return age >= FACTCHECK_IDLE_SECONDS
 
 
-def run_once() -> None:
+def run_once() -> dict:
+    run_info = {
+        "ran": False,
+        "idle": False,
+        "checked": 0,
+        "added": 0,
+        "reason": "",
+    }
+
     if not is_idle():
-        return
+        run_info["reason"] = "not_idle"
+        return run_info
+
+    run_info["idle"] = True
+    run_info["ran"] = True
 
     state = ftp_read_json(FACTCHECK_STATE_PATH, {"processed": []})
     processed = set(state.get("processed", []))
@@ -248,10 +270,13 @@ def run_once() -> None:
         candidates.append((key, user_msg))
 
     if not candidates:
-        return
+        run_info["reason"] = "no_candidates"
+        return run_info
 
     added = 0
-    for key, user_msg in candidates[:FACTCHECK_MAX_ITEMS_PER_RUN]:
+    selected = candidates[:FACTCHECK_MAX_ITEMS_PER_RUN]
+    run_info["checked"] = len(selected)
+    for key, user_msg in selected:
         query = extract_query_terms(user_msg)
         try:
             fact_text, source_url = fetch_wikipedia_fact(query)
@@ -281,6 +306,8 @@ def run_once() -> None:
         existing_ids.add(fact_id)
         added += 1
 
+    run_info["added"] = added
+
     state["processed"] = list(processed)[-5000:]
     state["updatedAt"] = datetime.now(timezone.utc).isoformat()
     facts_payload["profile"]["updatedAt"] = datetime.now(timezone.utc).isoformat()
@@ -288,14 +315,45 @@ def run_once() -> None:
     ftp_write_json(FACTCHECK_STATE_PATH, state)
     if added > 0:
         ftp_write_json(FACTCHECK_FACTS_PATH, facts_payload)
+    run_info["reason"] = "completed"
+    return run_info
 
 
 def main() -> None:
+    started_at = datetime.now(timezone.utc).isoformat()
+    loops = 0
+    total_added = 0
     while True:
+        loops += 1
+        now_iso = datetime.now(timezone.utc).isoformat()
         try:
-            run_once()
-        except Exception:
-            pass
+            run_info = run_once()
+            total_added += int(run_info.get("added", 0) or 0)
+            write_worker_status({
+                "started_at": started_at,
+                "last_loop_at": now_iso,
+                "last_run_at": now_iso if run_info.get("ran") else None,
+                "last_idle": bool(run_info.get("idle")),
+                "last_checked": int(run_info.get("checked", 0) or 0),
+                "last_added": int(run_info.get("added", 0) or 0),
+                "last_reason": str(run_info.get("reason") or ""),
+                "loops": loops,
+                "total_added": total_added,
+                "last_error": "",
+            })
+        except Exception as exc:
+            write_worker_status({
+                "started_at": started_at,
+                "last_loop_at": now_iso,
+                "last_run_at": None,
+                "last_idle": False,
+                "last_checked": 0,
+                "last_added": 0,
+                "last_reason": "exception",
+                "loops": loops,
+                "total_added": total_added,
+                "last_error": str(exc),
+            })
         time.sleep(max(30, FACTCHECK_INTERVAL_SECONDS))
 
 

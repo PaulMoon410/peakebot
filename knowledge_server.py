@@ -47,6 +47,7 @@ FTP_AI_KNOW_DIR = os.environ.get("FTP_AI_KNOW_DIR", FTP_BRAIN_DIR)
 TERM_KNOWLEDGE_FILE = os.environ.get("TERM_KNOWLEDGE_FILE", "term_knowledge.json")
 TERM_CACHE_TTL_SECONDS = int(os.environ.get("TERM_CACHE_TTL_SECONDS", "300"))
 SEARCH_CACHE_TTL_SECONDS = int(os.environ.get("SEARCH_CACHE_TTL_SECONDS", "120"))
+CHAT_SEARCH_RETRIES = int(os.environ.get("CHAT_SEARCH_RETRIES", "3"))
 FACTCHECK_ENABLED = os.environ.get("FACTCHECK_ENABLED", "true").lower() != "false"
 FACTCHECK_INTERVAL_SECONDS = int(os.environ.get("FACTCHECK_INTERVAL_SECONDS", "1800"))
 FACTCHECK_MAX_ITEMS_PER_RUN = int(os.environ.get("FACTCHECK_MAX_ITEMS_PER_RUN", "5"))
@@ -59,6 +60,10 @@ FACTCHECK_WHITELIST_HOSTS = os.environ.get(
 FACTCHECK_HEARTBEAT_PATH = os.environ.get(
     "FACTCHECK_HEARTBEAT_PATH",
     f"{FTP_BRAIN_DIR.rstrip('/')}/factcheck_heartbeat.json",
+)
+FACTCHECK_WORKER_STATUS_PATH = os.environ.get(
+    "FACTCHECK_WORKER_STATUS_PATH",
+    "/tmp/factcheck_worker_status.json",
 )
 
 # In-memory cache to reduce FTP round-trips
@@ -224,6 +229,7 @@ def start_factcheck_worker() -> None:
             "FACTCHECK_IDLE_SECONDS": str(FACTCHECK_IDLE_SECONDS),
             "FACTCHECK_WHITELIST_HOSTS": FACTCHECK_WHITELIST_HOSTS,
             "FACTCHECK_HEARTBEAT_PATH": FACTCHECK_HEARTBEAT_PATH,
+            "FACTCHECK_WORKER_STATUS_PATH": FACTCHECK_WORKER_STATUS_PATH,
         }
 
         _factcheck_process = subprocess.Popen(
@@ -583,6 +589,7 @@ def ftp_search_relevant_knowledge(
     try:
         term_knowledge = term_knowledge or ftp_load_term_knowledge()
         aliases = term_knowledge.get("aliases", {}) if isinstance(term_knowledge, dict) else {}
+        query_is_code = bool(re.search(r"\b(code|python|javascript|js|html|css|sql|function|class|bug|error|api)\b", query.lower()))
 
         max_files = SEARCH_MAX_FILES if SEARCH_MAX_FILES > 0 else None
         conversations = ftp_load_knowledge_for_search(max_files=max_files)
@@ -656,6 +663,10 @@ def ftp_search_relevant_knowledge(
             if phrase_matches:
                 score += 6.0 * len(set(phrase_matches))
 
+            # Boost records that look code-oriented when the question is code-oriented.
+            if query_is_code and re.search(r"(```|`|\bdef\b|\bfunction\b|\bclass\b|\bimport\b|\bconst\b|\blet\b|\breturn\b)", combined):
+                score += 10.0
+
             # Allow one-keyword topic prompts (e.g., "Constitution", "America") to match.
             min_matches = 1 if len(query_keywords) <= 3 else max(2, len(query_keywords) // 2)
             if str(conv.get("entry_type") or "") == "fact":
@@ -679,10 +690,60 @@ def _word_set(text: str) -> set:
     return set(re.findall(r"\w+", text.lower()))
 
 
+def _truncate_answer(text: str, max_sentences: int = 3, max_chars: int = 320) -> str:
+    cleaned = " ".join((text or "").strip().split())
+    if not cleaned:
+        return ""
+    sentences = re.split(r"(?<=[.!?])\s+", cleaned)
+    shortened = " ".join(sentences[:max_sentences]).strip()
+    if len(shortened) > max_chars:
+        return shortened[:max_chars].rsplit(" ", 1)[0] + "..."
+    return shortened
+
+
+def _best_effort_answer(prompt: str, memory: dict) -> str:
+    """Always return a usable answer, even when direct fact recall is weak."""
+    normalized = " ".join((prompt or "").strip().split())
+    if not normalized:
+        return "Please share your question again and I will answer directly."
+
+    # Code-learning branch: reflect code intent and ask for specifics.
+    if re.search(r"\b(code|python|javascript|js|html|css|sql|function|class|bug|error|api)\b", normalized.lower()):
+        return (
+            f"Based on your request, this sounds code-related: '{_truncate_answer(normalized, max_sentences=1, max_chars=140)}'. "
+            "I can learn from your examples and reply with cleaner code patterns. "
+            "Share the language plus one sample input/output and I will build the exact structure."
+        )
+
+    # Conversation-learning branch: mirror user wording with concise guidance.
+    facts = memory.get("facts") if isinstance(memory, dict) else []
+    recent_fact = ""
+    if isinstance(facts, list):
+        for item in reversed(facts):
+            if not isinstance(item, dict):
+                continue
+            candidate = str(item.get("fact") or item.get("value") or "").strip()
+            if candidate:
+                recent_fact = candidate
+                break
+
+    if recent_fact:
+        return (
+            f"You asked: '{_truncate_answer(normalized, max_sentences=1, max_chars=120)}'. "
+            f"Closest known point: {_truncate_answer(recent_fact, max_sentences=1, max_chars=140)}. "
+            "If you want, I can refine this into a more direct answer for your exact context."
+        )
+
+    return (
+        f"I did not find a fully verified match yet for '{_truncate_answer(normalized, max_sentences=1, max_chars=120)}', "
+        "but I can still help: give me one detail like location, goal, or timeframe and I will answer precisely."
+    )
+
+
 def _is_relevant_to_question(question: str, answer: str) -> bool:
     """Quick check: does the answer mention key concepts from the question?
     Prevents returning completely off-topic results."""
-    stop = {"a", "an", "the", "is", "are", "be", "in", "on", "at", "to", "for", "of", "and", "or", "what", "where", "best"}
+    stop = {"a", "an", "the", "is", "are", "be", "in", "on", "at", "to", "for", "of", "and", "or", "what", "where", "best", "can", "you", "about"}
     q_words = [w for w in re.findall(r"\w+", question.lower()) if w not in stop and len(w) > 3]
     if not q_words:
         return True  # Can't judge, assume OK
@@ -701,8 +762,7 @@ def generate_memory_response(
     relevant: List[dict],
     term_knowledge: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> str:
-    """Generate a response from memory and relevant prior conversations.
-    Can combine multiple relevant results for a more complete answer."""
+    """Generate a concise response from memory and relevant prior conversations."""
     lower = prompt.strip().lower()
 
     # Real-time date/time answers should bypass memory lookup.
@@ -776,47 +836,32 @@ def generate_memory_response(
                 # Result is off-topic; fall through to fallback response
                 pass
             elif best_q and best_q.lower() != lower:
-                # Truncate to first 2-3 sentences for conciseness
-                sentences = best_a.split(". ")
-                if len(sentences) > 3:
-                    truncated = ". ".join(sentences[:3]).rstrip() + "."
-                    if len(truncated) > 300:
-                        truncated = truncated[:300].rsplit(" ", 1)[0] + "..."
-                    return truncated
-                # Cap at 300 characters to avoid verbose AI rambling
-                if len(best_a) > 300:
-                    return best_a[:300].rsplit(" ", 1)[0] + "..."
-                return best_a
+                return _truncate_answer(best_a)
             else:
-                # Same question; truncate and return
-                sentences = best_a.split(". ")
-                if len(sentences) > 3:
-                    truncated = ". ".join(sentences[:3]).rstrip() + "."
-                    if len(truncated) > 300:
-                        truncated = truncated[:300].rsplit(" ", 1)[0] + "..."
-                    return truncated
-                if len(best_a) > 300:
-                    return best_a[:300].rsplit(" ", 1)[0] + "..."
-                return best_a
+                return _truncate_answer(best_a)
 
     facts = memory.get("facts") if isinstance(memory, dict) else []
     if isinstance(facts, list) and facts:
         latest_facts = [
-            f"{item.get('subject', '').strip()} = {item.get('value', '').strip()}"
+            f"{str(item.get('subject') or '').strip()} {str(item.get('fact') or item.get('value') or '').strip()}".strip()
             for item in facts[-3:]
-            if item.get("subject") and item.get("value")
+            if isinstance(item, dict) and (item.get("fact") or item.get("value") or item.get("subject"))
         ]
         if latest_facts:
             fact_list = "; ".join(latest_facts)
-            return (
-                "I do not have a close prior conversation match yet, "
-                f"but I remember these recent facts: {fact_list}."
-            )
+            return _truncate_answer(f"Closest memory: {fact_list}.")
 
-    return (
-        "I am still searching and verifying information for that. "
-        "Please provide a bit more detail, and I will keep improving stored facts."
-    )
+    return _best_effort_answer(prompt, memory)
+
+
+def _load_worker_status() -> dict:
+    """Read local worker heartbeat/status for health diagnostics."""
+    try:
+        with open(FACTCHECK_WORKER_STATUS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
 
 
 def verify_response(prompt: str, response: str, relevant: List[dict]) -> dict:
@@ -946,6 +991,7 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
 
         # --- Health check ---
         if path == "/health":
+            worker_status = _load_worker_status()
             self._send(200, {
                 "ok": True,
                 "service": "knowledge-server",
@@ -956,6 +1002,7 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 "factcheck_worker_running": bool(_factcheck_process and _factcheck_process.poll() is None),
                 "factcheck_interval_seconds": FACTCHECK_INTERVAL_SECONDS,
                 "factcheck_idle_seconds": FACTCHECK_IDLE_SECONDS,
+                "factcheck_worker_status": worker_status,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             })
             return
@@ -1111,13 +1158,25 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
 
             term_knowledge = ftp_load_term_knowledge()
 
-            # Search FTP knowledge base for relevant past exchanges
-            relevant = ftp_search_relevant_knowledge(prompt, max_results=5, term_knowledge=term_knowledge)
-            if not relevant:
-                # Facts may have been written by the background worker since last cache build.
-                with _search_corpus_lock:
-                    _search_corpus_cache.clear()
-                relevant = ftp_search_relevant_knowledge(prompt, max_results=5, term_knowledge=term_knowledge)
+            # Search FTP knowledge base with retries and progressive refresh.
+            relevant: List[dict] = []
+            attempts = max(1, min(CHAT_SEARCH_RETRIES, 5))
+            for attempt in range(attempts):
+                if attempt > 0:
+                    with _search_corpus_lock:
+                        _search_corpus_cache.clear()
+                if attempt >= 2:
+                    term_knowledge = ftp_load_term_knowledge(force_refresh=True)
+
+                per_attempt_limit = 5 if attempt == 0 else 8
+                relevant = ftp_search_relevant_knowledge(
+                    prompt,
+                    max_results=per_attempt_limit,
+                    term_knowledge=term_knowledge,
+                )
+                if relevant:
+                    break
+
             ai_response = generate_memory_response(prompt, memory, relevant, term_knowledge=term_knowledge)
             verification = verify_response(prompt, ai_response, relevant) if ENABLE_CROSS_VERIFY else {
                 "enabled": False,

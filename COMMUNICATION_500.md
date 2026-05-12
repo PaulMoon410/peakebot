@@ -1,0 +1,504 @@
+# 500 Communication And Coding Knowledge Notes
+
+This file is a seed knowledge set focused on normal communication, listening, collaboration, and practical coding communication habits.
+
+- Note 1: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 2: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 3: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 4: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 5: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 6: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 7: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 8: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 9: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 10: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 11: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 12: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 13: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 14: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 15: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 16: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 17: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 18: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 19: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 20: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 21: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 22: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 23: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 24: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 25: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 26: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 27: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 28: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 29: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 30: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 31: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 32: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 33: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 34: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 35: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 36: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 37: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 38: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 39: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 40: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 41: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 42: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 43: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 44: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 45: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 46: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 47: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 48: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 49: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 50: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 51: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 52: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 53: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 54: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 55: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 56: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 57: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 58: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 59: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 60: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 61: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 62: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 63: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 64: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 65: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 66: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 67: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 68: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 69: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 70: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 71: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 72: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 73: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 74: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 75: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 76: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 77: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 78: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 79: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 80: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 81: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 82: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 83: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 84: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 85: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 86: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 87: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 88: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 89: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 90: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 91: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 92: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 93: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 94: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 95: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 96: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 97: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 98: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 99: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 100: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 101: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 102: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 103: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 104: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 105: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 106: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 107: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 108: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 109: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 110: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 111: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 112: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 113: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 114: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 115: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 116: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 117: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 118: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 119: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 120: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 121: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 122: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 123: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 124: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 125: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 126: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 127: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 128: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 129: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 130: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 131: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 132: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 133: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 134: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 135: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 136: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 137: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 138: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 139: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 140: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 141: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 142: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 143: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 144: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 145: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 146: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 147: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 148: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 149: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 150: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 151: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 152: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 153: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 154: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 155: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 156: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 157: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 158: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 159: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 160: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 161: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 162: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 163: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 164: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 165: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 166: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 167: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 168: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 169: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 170: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 171: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 172: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 173: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 174: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 175: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 176: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 177: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 178: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 179: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 180: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 181: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 182: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 183: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 184: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 185: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 186: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 187: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 188: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 189: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 190: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 191: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 192: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 193: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 194: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 195: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 196: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 197: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 198: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 199: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 200: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 201: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 202: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 203: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 204: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 205: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 206: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 207: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 208: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 209: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 210: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 211: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 212: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 213: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 214: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 215: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 216: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 217: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 218: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 219: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 220: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 221: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 222: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 223: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 224: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 225: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 226: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 227: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 228: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 229: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 230: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 231: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 232: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 233: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 234: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 235: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 236: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 237: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 238: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 239: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 240: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 241: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 242: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 243: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 244: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 245: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 246: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 247: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 248: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 249: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 250: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 251: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 252: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 253: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 254: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 255: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 256: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 257: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 258: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 259: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 260: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 261: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 262: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 263: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 264: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 265: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 266: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 267: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 268: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 269: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 270: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 271: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 272: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 273: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 274: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 275: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 276: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 277: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 278: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 279: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 280: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 281: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 282: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 283: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 284: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 285: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 286: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 287: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 288: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 289: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 290: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 291: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 292: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 293: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 294: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 295: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 296: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 297: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 298: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 299: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 300: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 301: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 302: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 303: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 304: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 305: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 306: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 307: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 308: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 309: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 310: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 311: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 312: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 313: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 314: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 315: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 316: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 317: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 318: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 319: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 320: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 321: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 322: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 323: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 324: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 325: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 326: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 327: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 328: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 329: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 330: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 331: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 332: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 333: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 334: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 335: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 336: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 337: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 338: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 339: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 340: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 341: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 342: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 343: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 344: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 345: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 346: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 347: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 348: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 349: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 350: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 351: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 352: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 353: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 354: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 355: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 356: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 357: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 358: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 359: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 360: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 361: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 362: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 363: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 364: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 365: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 366: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 367: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 368: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 369: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 370: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 371: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 372: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 373: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 374: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 375: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 376: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 377: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 378: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 379: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 380: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 381: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 382: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 383: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 384: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 385: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 386: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 387: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 388: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 389: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 390: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 391: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 392: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 393: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 394: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 395: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 396: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 397: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 398: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 399: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 400: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 401: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 402: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 403: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 404: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 405: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 406: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 407: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 408: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 409: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 410: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 411: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 412: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 413: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 414: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 415: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 416: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 417: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 418: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 419: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 420: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 421: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 422: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 423: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 424: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 425: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 426: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 427: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 428: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 429: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 430: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 431: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 432: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 433: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 434: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 435: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 436: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 437: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 438: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 439: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 440: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 441: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 442: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 443: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 444: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 445: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 446: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 447: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 448: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 449: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 450: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 451: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 452: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 453: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 454: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 455: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 456: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 457: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 458: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 459: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 460: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 461: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 462: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 463: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 464: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 465: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 466: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 467: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 468: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 469: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 470: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 471: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 472: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 473: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 474: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 475: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 476: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 477: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 478: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 479: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 480: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 481: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 482: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 483: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 484: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 485: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 486: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 487: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 488: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 489: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 490: Active listening. Paraphrase the other person before giving your own point so they feel understood.
+- Note 491: Clarity. Use one idea per sentence when stakes are high to reduce misunderstandings.
+- Note 492: Empathy. Acknowledge emotion first, then move to solution language.
+- Note 493: Questions. Ask open-ended questions to collect context before proposing fixes.
+- Note 494: Conflict resolution. Describe behavior and impact, avoid labels and personal attacks.
+- Note 495: Code communication. Explain what changed, why it changed, and how to test it in plain language.
+- Note 496: Teaching. Give examples, then ask the learner to explain back in their own words.
+- Note 497: Feedback. Keep feedback specific, observable, and tied to a next action.
+- Note 498: Boundaries. Set clear time expectations and response windows to protect trust.
+- Note 499: Decision making. State options, tradeoffs, and recommendation in that order.
+- Note 500: Active listening. Paraphrase the other person before giving your own point so they feel understood.
