@@ -491,13 +491,16 @@ def ftp_load_knowledge_for_search(max_files: Optional[int] = None) -> List[dict]
                         context_text = str(fact.get("context") or "").strip()
                         category = str(fact.get("category") or "").strip()
                         fact_id = str(fact.get("id") or "").strip()
+                        fact_query = str(fact.get("query") or "").strip()
+                        sources = fact.get("sources") or []
+                        source_text = " ".join(str(s).strip() for s in sources if str(s).strip()) if isinstance(sources, list) else ""
 
                         if not fact_text:
                             continue
 
                         # user_message holds searchable metadata; ai_response is the canonical fact.
                         searchable_prompt = " ".join(
-                            part for part in [category, fact_id, fact_text, context_text] if part
+                            part for part in [category, fact_id, fact_query, fact_text, context_text, source_text] if part
                         )
 
                         conversations.append({
@@ -655,6 +658,9 @@ def ftp_search_relevant_knowledge(
 
             # Allow one-keyword topic prompts (e.g., "Constitution", "America") to match.
             min_matches = 1 if len(query_keywords) <= 3 else max(2, len(query_keywords) // 2)
+            if str(conv.get("entry_type") or "") == "fact":
+                # Fact records are concise; allow retrieval on a single strong keyword hit.
+                min_matches = 1
             if len(set(matches)) >= min_matches:
                 scored.append((score, len(set(matches)), len(set(phrase_matches)), conv))
 
@@ -1107,6 +1113,11 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
 
             # Search FTP knowledge base for relevant past exchanges
             relevant = ftp_search_relevant_knowledge(prompt, max_results=5, term_knowledge=term_knowledge)
+            if not relevant:
+                # Facts may have been written by the background worker since last cache build.
+                with _search_corpus_lock:
+                    _search_corpus_cache.clear()
+                relevant = ftp_search_relevant_knowledge(prompt, max_results=5, term_knowledge=term_knowledge)
             ai_response = generate_memory_response(prompt, memory, relevant, term_knowledge=term_knowledge)
             verification = verify_response(prompt, ai_response, relevant) if ENABLE_CROSS_VERIFY else {
                 "enabled": False,
