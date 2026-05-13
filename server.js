@@ -299,7 +299,7 @@ const server = http.createServer(async (req, res) => {
           const pyTransport = pyUrl.protocol === "https:" ? https : http;
           const pyPayload = JSON.stringify({ prompt: text, memory });
 
-          const pyResponse = await new Promise((resolve, reject) => {
+            const callPython = () => new Promise((resolve, reject) => {
             const options = {
               hostname: pyUrl.hostname,
               port: pyUrl.port || 5001,
@@ -328,14 +328,20 @@ const server = http.createServer(async (req, res) => {
               });
             });
 
-            pyReq.on("timeout", () => {
-              pyReq.destroy();
-              reject(new Error("Python server timeout"));
-            });
+            pyReq.on("timeout", () => { pyReq.destroy(); reject(new Error("Python server timeout")); });
             pyReq.on("error", reject);
             pyReq.write(pyPayload);
             pyReq.end();
           });
+
+          let pyResponse;
+          try {
+            pyResponse = await callPython();
+          } catch (firstErr) {
+            console.warn(`[main] Python chat attempt 1 failed: ${firstErr.message} — retrying in 3s`);
+            await new Promise((r) => setTimeout(r, 3000));
+            pyResponse = await callPython(); // let second failure propagate
+          }
 
           if (pyResponse.status !== 200) {
             throw new Error(`Python returned ${pyResponse.status}: ${pyResponse.data.error || "unknown error"}`);
@@ -555,6 +561,21 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Serve favicon to stop 404 noise
+  if (url.pathname === "/favicon.ico") {
+    const faviconPath = path.join(__dirname, "favicon.ico");
+    if (fs.existsSync(faviconPath)) {
+      fs.readFile(faviconPath, (err, data) => {
+        if (err) { res.writeHead(404); res.end(); return; }
+        res.writeHead(200, { "Content-Type": "image/x-icon", "Cache-Control": "public, max-age=86400" });
+        res.end(data);
+      });
+    } else {
+      res.writeHead(204); res.end();
+    }
+    return;
+  }
+
   serveStatic(req, res, url.pathname);
 });
 
@@ -564,6 +585,74 @@ const server = http.createServer(async (req, res) => {
 
 let pythonProcess = null;
 let isShuttingDown = false;
+let pythonRestartAttempts = 0;
+const PYTHON_MAX_RESTARTS = 10;
+const PYTHON_RESTART_DELAY_MS = 3000;
+
+/** Poll Python /health until it responds OK or timeout expires. */
+async function waitForPython(timeoutMs = 20000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const ok = await pyHealthCheck();
+    if (ok) return true;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  return false;
+}
+
+function spawnPython() {
+  const pythonScript = path.join(__dirname, "knowledge_server.py");
+  if (!fs.existsSync(pythonScript)) {
+    console.error(`[main] WARNING: knowledge_server.py not found at ${pythonScript}`);
+    return null;
+  }
+
+  const proc = spawn("python3", [pythonScript], {
+    env: {
+      ...process.env,
+      PYTHON_PORT: String(PYTHON_PORT),
+      PYTHON_HOST,
+      FTP_HOST: process.env.FTP_HOST || "ftp.geocities.ws",
+      FTP_USER: process.env.FTP_USER || "PeakeCoin",
+      FTP_PASSWORD: process.env.FTP_PASSWORD || "Peake410",
+      FTP_BRAIN_DIR,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  proc.stdout.on("data", (data) => {
+    const msg = data.toString().trim();
+    if (msg) console.log(`[python] ${msg}`);
+  });
+
+  proc.stderr.on("data", (data) => {
+    const msg = data.toString().trim();
+    if (msg) console.error(`[python-err] ${msg}`);
+  });
+
+  proc.on("error", (err) => {
+    console.error(`[main] Python spawn error: ${err.message}`);
+  });
+
+  proc.on("exit", (code, signal) => {
+    console.warn(`[main] Python server exited (code=${code} signal=${signal})`);
+    pythonProcess = null;
+    if (!isShuttingDown && pythonRestartAttempts < PYTHON_MAX_RESTARTS) {
+      pythonRestartAttempts++;
+      const delay = Math.min(PYTHON_RESTART_DELAY_MS * pythonRestartAttempts, 30000);
+      console.log(`[main] Restarting Python in ${delay}ms (attempt ${pythonRestartAttempts}/${PYTHON_MAX_RESTARTS})...`);
+      setTimeout(() => {
+        if (!isShuttingDown) {
+          pythonProcess = spawnPython();
+        }
+      }, delay);
+    } else if (pythonRestartAttempts >= PYTHON_MAX_RESTARTS) {
+      console.error("[main] Python restart limit reached. Will not restart.");
+    }
+  });
+
+  return proc;
+}
 
 function startPythonServer() {
   if (!START_PYTHON_SERVER) {
@@ -571,57 +660,17 @@ function startPythonServer() {
     return Promise.resolve();
   }
 
-  return new Promise((resolve, reject) => {
-    const pythonScript = path.join(__dirname, "knowledge_server.py");
-    
-    if (!fs.existsSync(pythonScript)) {
-      console.error(`[main] WARNING: knowledge_server.py not found at ${pythonScript}`);
-      resolve(); // Continue anyway; Python might not be needed for Render
-      return;
+  console.log(`[main] Starting Python knowledge server on port ${PYTHON_PORT}...`);
+  pythonProcess = spawnPython();
+  if (!pythonProcess) return Promise.resolve();
+
+  return waitForPython(25000).then((ready) => {
+    if (ready) {
+      pythonRestartAttempts = 0; // reset on successful first start
+      console.log(`[main] Python knowledge server ready on port ${PYTHON_PORT}`);
+    } else {
+      console.warn("[main] Python server did not respond to health check within 25s — continuing anyway");
     }
-
-    console.log(`[main] Starting Python knowledge server on port ${PYTHON_PORT}...`);
-    
-    pythonProcess = spawn("python3", [pythonScript], {
-      env: {
-        ...process.env,
-        PYTHON_PORT: String(PYTHON_PORT),
-        PYTHON_HOST,
-        FTP_HOST: process.env.FTP_HOST || "ftp.geocities.ws",
-        FTP_USER: process.env.FTP_USER || "PeakeCoin",
-        FTP_PASSWORD: process.env.FTP_PASSWORD || "Peake410",
-        FTP_BRAIN_DIR,
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    let pythonReady = false;
-
-    pythonProcess.stdout.on("data", (data) => {
-      const msg = data.toString().trim();
-      console.log(`[python] ${msg}`);
-      if (msg.includes("running on port")) {
-        pythonReady = true;
-        if (!pythonReady) resolve();
-      }
-    });
-
-    pythonProcess.stderr.on("data", (data) => {
-      console.error(`[python-err] ${data.toString().trim()}`);
-    });
-
-    pythonProcess.on("error", (err) => {
-      console.error(`[main] Failed to spawn Python: ${err.message}`);
-      reject(err);
-    });
-
-    pythonProcess.on("exit", (code) => {
-      console.log(`[main] Python server exited with code ${code}`);
-      pythonProcess = null;
-    });
-
-    // Give Python a moment to start, then resolve regardless
-    setTimeout(() => resolve(), 1500);
   });
 }
 
