@@ -264,20 +264,6 @@ async function generateReply(prompt) {
   const lower = text.toLowerCase();
   state.lastFtpStatus = "";
 
-  // Verify FTP connection is available before processing
-  try {
-    const ftpCheck = await fetch(`${RENDER_SERVER}/api/health`, {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-    });
-    const ftpData = await ftpCheck.json();
-    if (!ftpData.pythonKnowledgeServerOnline) {
-      return "FTP storage engine is offline. Cannot process chat at this time.";
-    }
-  } catch {
-    // FTP check failed, but continue anyway
-  }
-
   const rememberMatch = lower.match(/^remember that (.+?) is (.+)$/i) || lower.match(/^remember (.+?) is (.+)$/i);
   if (rememberMatch) {
     const [, subject, value] = rememberMatch;
@@ -313,14 +299,24 @@ async function generateReply(prompt) {
     // Chat runs through the Render Node proxy to the Python memory engine.
     if (state.nodeConnected) {
       try {
-        const nodeResponse = await fetch(`${RENDER_SERVER}/api/chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt: text,
-            memory: state.memory,
-          }),
-        });
+        const sendChatRequest = async () => {
+          return fetch(`${RENDER_SERVER}/api/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              prompt: text,
+              memory: state.memory,
+            }),
+          });
+        };
+
+        let nodeResponse = await sendChatRequest();
+
+        // One retry for transient deploy/restart windows.
+        if (nodeResponse.status === 502 || nodeResponse.status === 503 || nodeResponse.status === 504) {
+          await new Promise((resolve) => setTimeout(resolve, 2500));
+          nodeResponse = await sendChatRequest();
+        }
 
         let data = null;
         try {
@@ -361,20 +357,29 @@ async function generateReply(prompt) {
         }
 
         if (!nodeResponse.ok) {
-          const message = data?.error || `Node proxy error (${nodeResponse.status}).`;
-          return message;
+          const code = nodeResponse.status;
+          const reason = data?.error || `Node proxy error (${code}).`;
+          state.lastFtpStatus = `Backend temporary issue (${code}).`;
+          if (code === 503) {
+            return "Service is restarting. Please retry in a few seconds and I will answer.";
+          }
+          if (code === 502 || code === 504) {
+            return "I hit a temporary backend timeout. Please send your message again and I will respond.";
+          }
+          return `I could not reach the AI backend right now: ${reason}`;
         }
 
         return "Node server returned an unexpected response.";
       } catch (error) {
         state.nodeConnected = false;
         setConnectionStatus();
+        return "Connection to the AI backend dropped temporarily. Please retry in a few seconds.";
       }
     }
-    
-    return "Python memory engine unavailable. Please check connection status.";
+
+    return "AI backend is currently offline. I can still store notes/facts, and you can retry chat shortly.";
   } catch (error) {
-    return `Error: ${error.message}`;
+    return "Unexpected chat error occurred. Please retry your message.";
   }
 }
 
