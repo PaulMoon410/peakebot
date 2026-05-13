@@ -18,10 +18,23 @@ import re
 import subprocess
 import time
 import threading
+import logging
+import sys
+import traceback
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Dict, List, Optional
 from urllib.parse import urlparse, parse_qs
+
+# Configure logging to stderr with detailed format
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    stream=sys.stderr,
+    force=True,
+)
+logger = logging.getLogger('knowledge_server')
 
 # ---------------------------------------------------------------------------
 # Python memory engine configuration
@@ -166,7 +179,7 @@ def ftp_load_term_knowledge(force_refresh: bool = False) -> Dict[str, Dict[str, 
                         definitions[key] = val
                 loaded["definitions"] = definitions
     except Exception as exc:
-        print(f"[knowledge_server] WARN: could not load term knowledge from FTP: {exc}")
+        logger.warning(f"Could not load term knowledge from FTP: {exc}", exc_info=True)
     finally:
         ftp.quit()
 
@@ -211,12 +224,12 @@ def start_factcheck_worker() -> None:
     """Launch the periodic fact-check worker subprocess if enabled."""
     global _factcheck_process
     if not FACTCHECK_ENABLED:
-        print("[knowledge_server] Fact-check worker disabled (FACTCHECK_ENABLED=false)")
+        logger.info("Fact-check worker disabled (FACTCHECK_ENABLED=false)")
         return
 
     worker_script = os.path.join(os.path.dirname(__file__), "factcheck_worker.py")
     if not os.path.exists(worker_script):
-        print(f"[knowledge_server] Fact-check worker not found at {worker_script}")
+        logger.error(f"Fact-check worker not found at {worker_script}")
         return
 
     with _factcheck_lock:
@@ -237,10 +250,11 @@ def start_factcheck_worker() -> None:
         _factcheck_process = subprocess.Popen(
             ["python3", worker_script],
             env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
-        print(f"[knowledge_server] Fact-check worker started: {worker_script}")
+        logger.info(f"Fact-check worker started: PID {_factcheck_process.pid}")
 
 
 def stop_factcheck_worker() -> None:
@@ -1040,84 +1054,93 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):  # noqa: N802
-        parsed = urlparse(self.path)
-        qs = parse_qs(parsed.query)
-        path = parsed.path.rstrip("/")
+        try:
+            logger.debug(f"GET {self.path}")
+            parsed = urlparse(self.path)
+            qs = parse_qs(parsed.query)
+            path = parsed.path.rstrip("/")
 
-        # --- Health check ---
-        if path == "/health":
-            worker_status = _load_worker_status()
-            self._send(200, {
-                "ok": True,
-                "service": "knowledge-server",
-                "engine": KNOWLEDGE_ENGINE,
-                "cross_verify": ENABLE_CROSS_VERIFY,
-                "ftp_host": FTP_HOST,
-                "factcheck_enabled": FACTCHECK_ENABLED,
-                "factcheck_worker_running": bool(_factcheck_process and _factcheck_process.poll() is None),
-                "factcheck_interval_seconds": FACTCHECK_INTERVAL_SECONDS,
-                "factcheck_idle_seconds": FACTCHECK_IDLE_SECONDS,
-                "factcheck_worker_status": worker_status,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            })
-            return
-
-        # --- List knowledge ---
-        if path == "/knowledge":
-            try:
-                limit = min(int(qs.get("limit", [50])[0]), 200)
-                files = ftp_list_knowledge()[:limit]
-                self._send(200, {"files": files, "count": len(files)})
-            except Exception as exc:
-                self._send(500, {"error": str(exc)})
-            return
-
-        # --- Fetch single knowledge entry  /knowledge/<filename> ---
-        match = re.fullmatch(r"/knowledge/([\w\-\.]+\.json)", path)
-        if match:
-            filename = match.group(1)
-            # Check cache first
-            with _cache_lock:
-                cached = _cache.get(filename)
-            if cached:
-                self._send(200, cached)
+            # --- Health check ---
+            if path == "/health":
+                worker_status = _load_worker_status()
+                self._send(200, {
+                    "ok": True,
+                    "service": "knowledge-server",
+                    "engine": KNOWLEDGE_ENGINE,
+                    "cross_verify": ENABLE_CROSS_VERIFY,
+                    "ftp_host": FTP_HOST,
+                    "factcheck_enabled": FACTCHECK_ENABLED,
+                    "factcheck_worker_running": bool(_factcheck_process and _factcheck_process.poll() is None),
+                    "factcheck_interval_seconds": FACTCHECK_INTERVAL_SECONDS,
+                    "factcheck_idle_seconds": FACTCHECK_IDLE_SECONDS,
+                    "factcheck_worker_status": worker_status,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
                 return
-            try:
-                data = ftp_download_file(filename)
-                if data is None:
-                    self._send(404, {"error": "Not found"})
-                else:
-                    with _cache_lock:
-                        _cache[filename] = data
-                    self._send(200, data)
-            except Exception as exc:
-                self._send(500, {"error": str(exc)})
-            return
 
-        # --- Search knowledge (simple substring match on cached/recent entries) ---
-        if path == "/knowledge/search":
-            query = qs.get("q", [""])[0].strip().lower()
-            if not query:
-                self._send(400, {"error": "Missing query parameter 'q'"})
+            # --- List knowledge ---
+            if path == "/knowledge":
+                try:
+                    limit = min(int(qs.get("limit", [50])[0]), 200)
+                    files = ftp_list_knowledge()[:limit]
+                    self._send(200, {"files": files, "count": len(files)})
+                except Exception as exc:
+                    logger.error(f"Error listing knowledge: {exc}", exc_info=True)
+                    self._send(500, {"error": str(exc)})
                 return
-            try:
-                limit = min(int(qs.get("limit", [5])[0]), 20)
-                results = ftp_search_relevant_knowledge(query, max_results=limit)
-                self._send(200, {"results": results, "count": len(results)})
-            except Exception as exc:
-                self._send(500, {"error": str(exc)})
-            return
 
-        # --- Memory GET: load from FTP ---
-        if path == "/memory":
-            try:
-                memory = ftp_load_memory()
-                self._send(200, memory)
-            except Exception as exc:
-                self._send(500, {"error": str(exc)})
-            return
+            # --- Fetch single knowledge entry  /knowledge/<filename> ---
+            match = re.fullmatch(r"/knowledge/([\w\-\.]+\.json)", path)
+            if match:
+                filename = match.group(1)
+                # Check cache first
+                with _cache_lock:
+                    cached = _cache.get(filename)
+                if cached:
+                    self._send(200, cached)
+                    return
+                try:
+                    data = ftp_download_file(filename)
+                    if data is None:
+                        self._send(404, {"error": "Not found"})
+                    else:
+                        with _cache_lock:
+                            _cache[filename] = data
+                        self._send(200, data)
+                except Exception as exc:
+                    logger.error(f"Error downloading knowledge file {filename}: {exc}", exc_info=True)
+                    self._send(500, {"error": str(exc)})
+                return
 
-        self._send(404, {"error": "Not found"})
+            # --- Search knowledge (simple substring match on cached/recent entries) ---
+            if path == "/knowledge/search":
+                query = qs.get("q", [""])[0].strip().lower()
+                if not query:
+                    self._send(400, {"error": "Missing query parameter 'q'"})
+                    return
+                try:
+                    limit = min(int(qs.get("limit", [5])[0]), 20)
+                    results = ftp_search_relevant_knowledge(query, max_results=limit)
+                    self._send(200, {"results": results, "count": len(results)})
+                except Exception as exc:
+                    logger.error(f"Error searching knowledge: {exc}", exc_info=True)
+                    self._send(500, {"error": str(exc)})
+                return
+
+            # --- Memory GET: load from FTP ---
+            if path == "/memory":
+                try:
+                    memory = ftp_load_memory()
+                    self._send(200, memory)
+                except Exception as exc:
+                    logger.error(f"Error loading memory: {exc}", exc_info=True)
+                    self._send(500, {"error": str(exc)})
+                return
+
+            self._send(404, {"error": "Not found"})
+        except Exception as exc:
+            logger.error(f"Unhandled error in do_GET: {exc}", exc_info=True)
+            self._send(500, {"error": "Internal server error"})
 
     def do_PUT(self):  # noqa: N802
         parsed = urlparse(self.path)
@@ -1144,137 +1167,153 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
         self._send(404, {"error": "Not found"})
 
     def do_POST(self):  # noqa: N802
-        parsed = urlparse(self.path)
-        path = parsed.path.rstrip("/")
+        try:
+            logger.debug(f"POST {self.path}")
+            parsed = urlparse(self.path)
+            path = parsed.path.rstrip("/")
 
-        # --- Store new knowledge entry ---
-        if path == "/knowledge":
-            body = self._read_body()
-            if body is None:
-                self._send(400, {"error": "Invalid or oversized JSON body"})
+            # --- Store new knowledge entry ---
+            if path == "/knowledge":
+                body = self._read_body()
+                if body is None:
+                    self._send(400, {"error": "Invalid or oversized JSON body"})
+                    return
+
+                user_message = body.get("user_message", "").strip()
+                ai_response = body.get("ai_response", "").strip()
+                memory_state = body.get("memory_state", {})
+
+                if not user_message or not ai_response:
+                    self._send(400, {"error": "Fields 'user_message' and 'ai_response' are required"})
+                    return
+
+                touch_factcheck_heartbeat()
+
+                try:
+                    # Append to today's daily file on FTP
+                    daily_file = ftp_append_conversation(user_message, ai_response, memory_state)
+
+                    if daily_file:
+                        logger.info(f"Knowledge appended to {daily_file}")
+                        self._send(201, {"ok": True, "daily_file": daily_file})
+                    else:
+                        raise Exception("Failed to append to FTP")
+                except Exception as exc:
+                    logger.error(f"ERROR saving knowledge: {exc}", exc_info=True)
+                    self._send(500, {"error": str(exc)})
                 return
 
-            user_message = body.get("user_message", "").strip()
-            ai_response = body.get("ai_response", "").strip()
-            memory_state = body.get("memory_state", {})
-
-            if not user_message or not ai_response:
-                self._send(400, {"error": "Fields 'user_message' and 'ai_response' are required"})
-                return
-
-            touch_factcheck_heartbeat()
-
-            try:
-                # Append to today's daily file on FTP
-                daily_file = ftp_append_conversation(user_message, ai_response, memory_state)
-
-                if daily_file:
-                    print(f"[knowledge_server] Knowledge appended to {daily_file}")
-                    self._send(201, {"ok": True, "daily_file": daily_file})
-                else:
-                    raise Exception("Failed to append to FTP")
-            except Exception as exc:
-                print(f"[knowledge_server] ERROR saving knowledge: {exc}")
-                self._send(500, {"error": str(exc)})
-            return
-
-        # --- Sync: refresh the in-memory cache from FTP ---
-        if path == "/sync":
-            try:
-                with _cache_lock:
-                    _cache.clear()
-                with _search_corpus_lock:
-                    _search_corpus_cache.clear()
-                with _term_knowledge_lock:
-                    _term_knowledge_cache["loaded_at"] = 0.0
-                    _term_knowledge_cache["data"] = {"aliases": {}, "definitions": {}}
-                files = ftp_list_knowledge()
-                self._send(200, {"ok": True, "message": "Cache cleared", "available": len(files)})
-            except Exception as exc:
-                self._send(500, {"error": str(exc)})
-            return
-
-        # --- Chat: receive a user message, call Llama, store result on FTP ---
-        if path == "/chat":
-            body = self._read_body()
-            if body is None:
-                self._send(400, {"error": "Invalid or oversized JSON body"})
-                return
-
-            prompt = body.get("prompt", "").strip()
-            memory = body.get("memory", {})
-
-            if not prompt:
-                self._send(400, {"error": "Field 'prompt' is required"})
-                return
-
-            touch_factcheck_heartbeat()
-
-            term_knowledge = ftp_load_term_knowledge()
-
-            # Search FTP knowledge base with retries and progressive refresh.
-            relevant: List[dict] = []
-            attempts = max(1, min(CHAT_SEARCH_RETRIES, 5))
-            for attempt in range(attempts):
-                if attempt > 0:
+            # --- Sync: refresh the in-memory cache from FTP ---
+            if path == "/sync":
+                try:
+                    with _cache_lock:
+                        _cache.clear()
                     with _search_corpus_lock:
                         _search_corpus_cache.clear()
-                if attempt >= 2:
-                    term_knowledge = ftp_load_term_knowledge(force_refresh=True)
+                    with _term_knowledge_lock:
+                        _term_knowledge_cache["loaded_at"] = 0.0
+                        _term_knowledge_cache["data"] = {"aliases": {}, "definitions": {}}
+                    files = ftp_list_knowledge()
+                    logger.info(f"Cache cleared: {len(files)} knowledge files available")
+                    self._send(200, {"ok": True, "message": "Cache cleared", "available": len(files)})
+                except Exception as exc:
+                    logger.error(f"Error during sync: {exc}", exc_info=True)
+                    self._send(500, {"error": str(exc)})
+                return
 
-                per_attempt_limit = 5 if attempt == 0 else 8
-                relevant = ftp_search_relevant_knowledge(
-                    prompt,
-                    max_results=per_attempt_limit,
-                    term_knowledge=term_knowledge,
-                )
-                if relevant:
-                    break
+            # --- Chat: receive a user message, call Llama, store result on FTP ---
+            if path == "/chat":
+                body = self._read_body()
+                if body is None:
+                    self._send(400, {"error": "Invalid or oversized JSON body"})
+                    return
 
-            ai_response = generate_memory_response(prompt, memory, relevant, term_knowledge=term_knowledge)
-            verification = verify_response(prompt, ai_response, relevant) if ENABLE_CROSS_VERIFY else {
-                "enabled": False,
-                "passed": True,
-                "score": 1.0,
-                "issues": [],
-            }
+                prompt = body.get("prompt", "").strip()
+                memory = body.get("memory", {})
 
-            # If verification fails and we have a stronger prior answer, use it directly.
-            if not verification.get("passed", True) and relevant:
-                fallback = relevant[0].get("ai_response", "").strip()
-                if fallback:
-                    ai_response = fallback
-                    verification = verify_response(prompt, ai_response, relevant) if ENABLE_CROSS_VERIFY else verification
+                if not prompt:
+                    self._send(400, {"error": "Field 'prompt' is required"})
+                    return
 
-            # Store the conversation to today's daily file on FTP
-            ftp_saved = False
-            daily_file = None
-            ftp_error = None
-            try:
-                if is_low_quality_ai_response(ai_response):
-                    ftp_error = "Skipped saving low-quality fallback response"
-                    print("[knowledge_server] Skipped saving low-quality fallback response")
-                else:
-                    daily_file = ftp_append_conversation(prompt, ai_response, memory)
-                    if daily_file:
-                        ftp_saved = True
-                        print(f"[knowledge_server] Chat appended to {daily_file}")
-                    else:
-                        ftp_error = "Failed to append to FTP"
-                        print(f"[knowledge_server] WARNING: could not append to FTP")
-            except Exception as exc:
-                ftp_error = str(exc)
-                print(f"[knowledge_server] WARNING: FTP append failed: {exc}")
+                logger.debug(f"Chat request: {prompt[:100]}...")
+                touch_factcheck_heartbeat()
 
-            self._send(200, {
-                "response": ai_response,
-                "source": "python-memory-engine",
-                "relevant_count": len(relevant),
-                "verification": verification,
-                "ftp_saved": ftp_saved,
-                "daily_file": daily_file,
-                "ftp_error": ftp_error,
-            })
+                try:
+                    term_knowledge = ftp_load_term_knowledge()
+
+                    # Search FTP knowledge base with retries and progressive refresh.
+                    relevant: List[dict] = []
+                    attempts = max(1, min(CHAT_SEARCH_RETRIES, 5))
+                    for attempt in range(attempts):
+                        if attempt > 0:
+                            with _search_corpus_lock:
+                                _search_corpus_cache.clear()
+                        if attempt >= 2:
+                            term_knowledge = ftp_load_term_knowledge(force_refresh=True)
+
+                        per_attempt_limit = 5 if attempt == 0 else 8
+                        relevant = ftp_search_relevant_knowledge(
+                            prompt,
+                            max_results=per_attempt_limit,
+                            term_knowledge=term_knowledge,
+                        )
+                        if relevant:
+                            logger.debug(f"Chat search attempt {attempt+1}: found {len(relevant)} results")
+                            break
+
+                    ai_response = generate_memory_response(prompt, memory, relevant, term_knowledge=term_knowledge)
+                    verification = verify_response(prompt, ai_response, relevant) if ENABLE_CROSS_VERIFY else {
+                        "enabled": False,
+                        "passed": True,
+                        "score": 1.0,
+                        "issues": [],
+                    }
+
+                    # If verification fails and we have a stronger prior answer, use it directly.
+                    if not verification.get("passed", True) and relevant:
+                        fallback = relevant[0].get("ai_response", "").strip()
+                        if fallback:
+                            ai_response = fallback
+                            verification = verify_response(prompt, ai_response, relevant) if ENABLE_CROSS_VERIFY else verification
+
+                    # Store the conversation to today's daily file on FTP
+                    ftp_saved = False
+                    daily_file = None
+                    ftp_error = None
+                    try:
+                        if is_low_quality_ai_response(ai_response):
+                            ftp_error = "Skipped saving low-quality fallback response"
+                            logger.debug("Skipped saving low-quality fallback response")
+                        else:
+                            daily_file = ftp_append_conversation(prompt, ai_response, memory)
+                            if daily_file:
+                                ftp_saved = True
+                                logger.info(f"Chat appended to {daily_file}")
+                            else:
+                                ftp_error = "Failed to append to FTP"
+                                logger.warning("Could not append to FTP")
+                    except Exception as exc:
+                        ftp_error = str(exc)
+                        logger.warning(f"FTP append failed: {exc}", exc_info=True)
+
+                    self._send(200, {
+                        "response": ai_response,
+                        "source": "python-memory-engine",
+                        "relevant_count": len(relevant),
+                        "verification": verification,
+                        "ftp_saved": ftp_saved,
+                        "daily_file": daily_file,
+                        "ftp_error": ftp_error,
+                    })
+                except Exception as exc:
+                    logger.error(f"Error processing chat: {exc}", exc_info=True)
+                    self._send(500, {"error": str(exc)})
+                return
+
+            self._send(404, {"error": "Not found"})
+        except Exception as exc:
+            logger.error(f"Unhandled error in do_POST: {exc}", exc_info=True)
+            self._send(500, {"error": "Internal server error"})
             return
 
         self._send(404, {"error": "Not found"})

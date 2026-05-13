@@ -11,13 +11,26 @@ import ftplib
 import hashlib
 import io
 import json
+import logging
 import os
 import re
+import sys
 import time
+import traceback
 from datetime import datetime, timezone
 from typing import Dict, List, Tuple
 from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
+
+# Configure logging to stderr with detailed format
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    stream=sys.stderr,
+    force=True,
+)
+logger = logging.getLogger('factcheck_worker')
 
 FTP_HOST = os.environ.get("FTP_HOST", "ftp.geocities.ws")
 FTP_USER = os.environ.get("FTP_USER", "PeakeCoin")
@@ -39,11 +52,17 @@ FACTCHECK_AGGRESSIVE_IDLE_INTERVAL = int(os.environ.get("FACTCHECK_AGGRESSIVE_ID
 
 
 def _ftp_connect() -> ftplib.FTP:  # type: ignore[type-arg]
-    ftp = ftplib.FTP()
-    ftp.connect(FTP_HOST, 21, timeout=20)
-    ftp.login(FTP_USER, FTP_PASSWORD)
-    ftp.set_pasv(True)
-    return ftp
+    try:
+        logger.debug(f"Connecting to FTP: {FTP_HOST}")
+        ftp = ftplib.FTP()
+        ftp.connect(FTP_HOST, 21, timeout=20)
+        ftp.login(FTP_USER, FTP_PASSWORD)
+        ftp.set_pasv(True)
+        logger.debug(f"FTP connected successfully")
+        return ftp
+    except Exception as e:
+        logger.error(f"FTP connection failed: {e}", exc_info=True)
+        raise
 
 
 def _ensure_ftp_dir(ftp: ftplib.FTP, directory: str) -> None:  # type: ignore[type-arg]
@@ -59,29 +78,38 @@ def _ensure_ftp_dir(ftp: ftplib.FTP, directory: str) -> None:  # type: ignore[ty
 
 
 def ftp_read_json(path: str, default):
-    ftp = _ftp_connect()
     try:
-        buf = io.BytesIO()
-        ftp.retrbinary(f"RETR {path}", buf.write)
-        buf.seek(0)
-        return json.loads(buf.read().decode("utf-8"))
-    except Exception:
+        logger.debug(f"Reading JSON from FTP: {path}")
+        ftp = _ftp_connect()
+        try:
+            buf = io.BytesIO()
+            ftp.retrbinary(f"RETR {path}", buf.write)
+            buf.seek(0)
+            result = json.loads(buf.read().decode("utf-8"))
+            logger.debug(f"Successfully read JSON from {path}")
+            return result
+        finally:
+            ftp.quit()
+    except Exception as e:
+        logger.warning(f"Failed to read JSON from {path}: {e}")
         return default
-    finally:
-        ftp.quit()
 
 
 def ftp_write_json(path: str, payload) -> bool:
-    ftp = _ftp_connect()
     try:
-        _ensure_ftp_dir(ftp, os.path.dirname(path) or "/")
-        raw = json.dumps(payload, indent=2, ensure_ascii=False).encode("utf-8")
-        ftp.storbinary(f"STOR {path}", io.BytesIO(raw))
-        return True
-    except Exception:
+        logger.debug(f"Writing JSON to FTP: {path}")
+        ftp = _ftp_connect()
+        try:
+            _ensure_ftp_dir(ftp, os.path.dirname(path) or "/")
+            raw = json.dumps(payload, indent=2, ensure_ascii=False).encode("utf-8")
+            ftp.storbinary(f"STOR {path}", io.BytesIO(raw))
+            logger.debug(f"Successfully wrote JSON to {path}")
+            return True
+        finally:
+            ftp.quit()
+    except Exception as e:
+        logger.error(f"Failed to write JSON to {path}: {e}", exc_info=True)
         return False
-    finally:
-        ftp.quit()
 
 
 def write_worker_status(payload: dict) -> None:
@@ -385,6 +413,7 @@ def run_once(aggressive_mode: bool = False) -> dict:
 
 
 def main() -> None:
+    logger.info("Fact-check worker starting")
     started_at = datetime.now(timezone.utc).isoformat()
     loops = 0
     total_added = 0
@@ -394,12 +423,16 @@ def main() -> None:
         now_iso = datetime.now(timezone.utc).isoformat()
         try:
             is_aggressive = idle_loops > 0
+            logger.debug(f"Loop {loops}: aggressive_mode={is_aggressive}, idle_loops={idle_loops}")
             run_info = run_once(aggressive_mode=is_aggressive)
             total_added += int(run_info.get("added", 0) or 0)
             if run_info.get("idle"):
                 idle_loops = min(idle_loops + 1, 10)
             else:
                 idle_loops = 0
+            
+            logger.info(f"Loop {loops}: reason={run_info.get('reason')}, checked={run_info.get('checked')}, added={run_info.get('added')}, total_added={total_added}")
+            
             write_worker_status({
                 "started_at": started_at,
                 "last_loop_at": now_iso,
@@ -414,6 +447,7 @@ def main() -> None:
                 "last_error": "",
             })
         except Exception as exc:
+            logger.error(f"Loop {loops} exception: {exc}", exc_info=True)
             write_worker_status({
                 "started_at": started_at,
                 "last_loop_at": now_iso,
