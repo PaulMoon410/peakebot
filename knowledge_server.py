@@ -27,8 +27,9 @@ from typing import Dict, List, Optional
 from urllib.parse import urlparse, parse_qs
 
 # Configure logging to stderr with detailed format
+KNOWLEDGE_LOG_LEVEL = os.environ.get("KNOWLEDGE_LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=getattr(logging, KNOWLEDGE_LOG_LEVEL, logging.INFO),
     format='[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
     stream=sys.stderr,
@@ -1055,7 +1056,8 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):  # noqa: N802
         try:
-            logger.debug(f"GET {self.path}")
+            if not self.path.startswith("/health") or logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"GET {self.path}")
             parsed = urlparse(self.path)
             qs = parse_qs(parsed.query)
             path = parsed.path.rstrip("/")

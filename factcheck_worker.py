@@ -23,8 +23,9 @@ from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
 # Configure logging to stderr with detailed format
+FACTCHECK_LOG_LEVEL = os.environ.get("FACTCHECK_LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=getattr(logging, FACTCHECK_LOG_LEVEL, logging.INFO),
     format='[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
     stream=sys.stderr,
