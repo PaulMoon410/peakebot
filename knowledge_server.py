@@ -180,6 +180,13 @@ def ftp_load_term_knowledge(force_refresh: bool = False) -> Dict[str, Dict[str, 
                     if key and val:
                         definitions[key] = val
                 loaded["definitions"] = definitions
+    except ftplib.error_perm as exc:
+        # Fresh deployments may not have the optional term knowledge file yet.
+        err = str(exc)
+        if "550" in err or "No such file" in err:
+            logger.info(f"Optional term knowledge file not found on FTP: {remote_path}")
+        else:
+            logger.warning(f"Could not load term knowledge from FTP: {exc}", exc_info=True)
     except Exception as exc:
         logger.warning(f"Could not load term knowledge from FTP: {exc}", exc_info=True)
     finally:
