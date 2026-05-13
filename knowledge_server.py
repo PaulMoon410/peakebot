@@ -48,6 +48,8 @@ TERM_KNOWLEDGE_FILE = os.environ.get("TERM_KNOWLEDGE_FILE", "term_knowledge.json
 TERM_CACHE_TTL_SECONDS = int(os.environ.get("TERM_CACHE_TTL_SECONDS", "300"))
 SEARCH_CACHE_TTL_SECONDS = int(os.environ.get("SEARCH_CACHE_TTL_SECONDS", "120"))
 CHAT_SEARCH_RETRIES = int(os.environ.get("CHAT_SEARCH_RETRIES", "3"))
+KNOWLEDGE_MAX_FILE_MB = int(os.environ.get("KNOWLEDGE_MAX_FILE_MB", "10"))
+KNOWLEDGE_MAX_FILE_BYTES = max(1, KNOWLEDGE_MAX_FILE_MB) * 1024 * 1024
 FACTCHECK_ENABLED = os.environ.get("FACTCHECK_ENABLED", "true").lower() != "false"
 FACTCHECK_INTERVAL_SECONDS = int(os.environ.get("FACTCHECK_INTERVAL_SECONDS", "1800"))
 FACTCHECK_MAX_ITEMS_PER_RUN = int(os.environ.get("FACTCHECK_MAX_ITEMS_PER_RUN", "5"))
@@ -360,27 +362,65 @@ def ftp_download_file(filename: str) -> Optional[dict]:
 
 
 def ftp_get_daily_filename() -> str:
-    """Return the daily knowledge file path based on current UTC date."""
+    """Return first chunk path for today's daily knowledge file."""
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    return f"{FTP_BRAIN_DIR}/{date_str}.json"
+    return f"{FTP_BRAIN_DIR}/{date_str}-01.json"
+
+
+def _daily_chunk_filename(date_str: str, chunk_index: int) -> str:
+    return f"{FTP_BRAIN_DIR}/{date_str}-{chunk_index:02d}.json"
+
+
+def _daily_chunk_index(filename: str, date_str: str) -> Optional[int]:
+    # Accept legacy YYYY-MM-DD.json as chunk 1; prefer explicit -01 onward.
+    m = re.fullmatch(rf"{re.escape(date_str)}(?:-(\d{{2,3}}))?\.json", filename)
+    if not m:
+        return None
+    if m.group(1):
+        try:
+            return int(m.group(1))
+        except ValueError:
+            return None
+    return 1
+
+
+def _ftp_download_json_list(ftp: ftplib.FTP, full_path: str) -> List[dict]:  # type: ignore[type-arg]
+    buf = io.BytesIO()
+    try:
+        ftp.retrbinary(f"RETR {full_path}", buf.write)
+    except ftplib.error_perm:
+        return []
+    buf.seek(0)
+    try:
+        data = json.loads(buf.read().decode("utf-8"))
+    except Exception:
+        return []
+    return data if isinstance(data, list) else []
 
 
 def ftp_load_daily_knowledge() -> List[dict]:
-    """Load today's conversation array from FTP. Returns empty list if file doesn't exist."""
+    """Load today's latest chunked conversation array from FTP."""
     try:
         ftp = _ftp_connect()
-        filename = ftp_get_daily_filename()
-        buf = io.BytesIO()
         try:
-            ftp.retrbinary(f"RETR {filename}", buf.write)
+            ftp.cwd(FTP_BRAIN_DIR)
         except ftplib.error_perm:
             ftp.quit()
             return []
-        
+
+        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        names = [n for n in ftp.nlst() if n.endswith(".json")]
+        chunk_indices = [idx for idx in (_daily_chunk_index(n, date_str) for n in names) if idx is not None]
+
+        if not chunk_indices:
+            ftp.quit()
+            return []
+
+        latest_idx = max(chunk_indices)
+        latest_file = _daily_chunk_filename(date_str, latest_idx)
+        conversations = _ftp_download_json_list(ftp, latest_file)
         ftp.quit()
-        buf.seek(0)
-        data = json.loads(buf.read().decode("utf-8"))
-        return data if isinstance(data, list) else []
+        return conversations
     except Exception:
         return []
 
@@ -529,41 +569,56 @@ def ftp_load_knowledge_for_search(max_files: Optional[int] = None) -> List[dict]
         ftp.quit()
 
 
-def ftp_append_conversation(user_message: str, ai_response: str, memory_state: dict) -> bool:
+def ftp_append_conversation(user_message: str, ai_response: str, memory_state: dict) -> Optional[str]:
     """
     Append a conversation to today's daily file on FTP.
     Creates the file if it doesn't exist.
     """
     try:
-        # Load today's conversations
-        conversations = ftp_load_daily_knowledge()
-        
-        # Append new conversation
-        conversations.append({
+        new_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "user_message": user_message,
             "ai_response": ai_response,
             "memory_state": memory_state,
-        })
-        
-        # Upload back to FTP
+        }
+
         ftp = _ftp_connect()
         _ensure_ftp_dir(ftp, FTP_BRAIN_DIR)
-        filename = ftp_get_daily_filename()
-        payload = json.dumps(conversations, indent=2, ensure_ascii=False).encode("utf-8")
-        ftp.storbinary(f"STOR {filename}", io.BytesIO(payload))
+
+        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        names = [n for n in ftp.nlst() if n.endswith(".json")]
+        chunk_indices = [idx for idx in (_daily_chunk_index(n, date_str) for n in names) if idx is not None]
+
+        if chunk_indices:
+            latest_idx = max(chunk_indices)
+            target_filename = _daily_chunk_filename(date_str, latest_idx)
+            existing = _ftp_download_json_list(ftp, target_filename)
+        else:
+            latest_idx = 1
+            target_filename = _daily_chunk_filename(date_str, latest_idx)
+            existing = []
+
+        candidate = existing + [new_entry]
+        payload = json.dumps(candidate, indent=2, ensure_ascii=False).encode("utf-8")
+
+        if len(payload) > KNOWLEDGE_MAX_FILE_BYTES:
+            latest_idx += 1
+            target_filename = _daily_chunk_filename(date_str, latest_idx)
+            payload = json.dumps([new_entry], indent=2, ensure_ascii=False).encode("utf-8")
+
+        ftp.storbinary(f"STOR {target_filename}", io.BytesIO(payload))
         ftp.quit()
-        
+
         # Clear cache for this file
         with _cache_lock:
-            _cache.pop(filename, None)
+            _cache.pop(target_filename, None)
         with _search_corpus_lock:
             _search_corpus_cache.clear()
-        
-        return True
+
+        return target_filename
     except Exception as exc:
         print(f"[knowledge_server] ERROR appending conversation: {exc}")
-        return False
+        return None
 
 
 def ftp_search_relevant_knowledge(
@@ -1111,10 +1166,9 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
 
             try:
                 # Append to today's daily file on FTP
-                ok = ftp_append_conversation(user_message, ai_response, memory_state)
-                
-                if ok:
-                    daily_file = ftp_get_daily_filename()
+                daily_file = ftp_append_conversation(user_message, ai_response, memory_state)
+
+                if daily_file:
                     print(f"[knowledge_server] Knowledge appended to {daily_file}")
                     self._send(201, {"ok": True, "daily_file": daily_file})
                 else:
@@ -1201,10 +1255,9 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                     ftp_error = "Skipped saving low-quality fallback response"
                     print("[knowledge_server] Skipped saving low-quality fallback response")
                 else:
-                    ok = ftp_append_conversation(prompt, ai_response, memory)
-                    if ok:
+                    daily_file = ftp_append_conversation(prompt, ai_response, memory)
+                    if daily_file:
                         ftp_saved = True
-                        daily_file = ftp_get_daily_filename()
                         print(f"[knowledge_server] Chat appended to {daily_file}")
                     else:
                         ftp_error = "Failed to append to FTP"
