@@ -43,6 +43,47 @@ const state = {
   connectionCheckTimer: null,
 };
 
+const ERROR_CONVERSATION_PATTERNS = [
+  /ftp storage engine is offline/i,
+  /python memory engine failed/i,
+  /node proxy error/i,
+  /python server timeout/i,
+  /^error:\s*/i,
+  /backend (temporary issue|timeout|offline)/i,
+  /service is restarting/i,
+  /could not reach the ai backend/i,
+  /connection to the ai backend dropped/i,
+  /unexpected chat error occurred/i,
+];
+
+function isErrorConversationText(text) {
+  const value = String(text || "").trim();
+  if (!value) {
+    return false;
+  }
+  return ERROR_CONVERSATION_PATTERNS.some((pattern) => pattern.test(value));
+}
+
+function cleanErrorConversations(memory) {
+  if (!memory || !Array.isArray(memory.conversations)) {
+    return { removed: 0, cleaned: memory };
+  }
+
+  const original = memory.conversations;
+  const filtered = original.filter((entry) => {
+    const aiText = String(entry?.ai || "");
+    return !isErrorConversationText(aiText);
+  });
+
+  return {
+    removed: original.length - filtered.length,
+    cleaned: {
+      ...memory,
+      conversations: filtered,
+    },
+  };
+}
+
 function hasAiConnection() {
   return state.nodeConnected;
 }
@@ -384,6 +425,10 @@ async function generateReply(prompt) {
 }
 
 function logConversation(prompt, response) {
+  if (isErrorConversationText(response)) {
+    return;
+  }
+
   state.memory.conversations.push({
     timestamp: new Date().toISOString(),
     user: prompt,
@@ -547,8 +592,16 @@ async function initializeMemory() {
       if (res.ok) {
         const remote = await res.json();
         if (remote && typeof remote === "object") {
-          state.memory = { ...defaultMemory(), ...remote };
-          setStatus("Memory loaded from server.");
+          const merged = { ...defaultMemory(), ...remote };
+          const cleanedResult = cleanErrorConversations(merged);
+          state.memory = cleanedResult.cleaned;
+
+          if (cleanedResult.removed > 0) {
+            persistMemory();
+            setStatus(`Memory loaded and cleaned (${cleanedResult.removed} error conversations removed).`);
+          } else {
+            setStatus("Memory loaded from server.");
+          }
         }
       }
     } catch {
