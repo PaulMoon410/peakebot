@@ -253,6 +253,16 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // During graceful shutdown (deploy/restart), fail fast for API calls.
+  // This prevents long waits while the Python sidecar is being terminated.
+  if (isShuttingDown && url.pathname.startsWith("/api/")) {
+    sendJson(res, 503, {
+      error: "Service restarting, please retry in a few seconds.",
+      retryable: true,
+    });
+    return;
+  }
+
   if (url.pathname === "/api/health" && req.method === "GET") {
     const pyOk = await pyHealthCheck();
     sendJson(res, 200, {
@@ -283,6 +293,14 @@ const server = http.createServer(async (req, res) => {
 
     req.on("end", async () => {
       try {
+        if (isShuttingDown) {
+          sendJson(res, 503, {
+            error: "Service restarting, please retry in a few seconds.",
+            retryable: true,
+          });
+          return;
+        }
+
         const raw = Buffer.concat(chunks).toString("utf8");
         const payload = JSON.parse(raw || "{}");
         
