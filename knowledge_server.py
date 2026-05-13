@@ -22,7 +22,7 @@ import logging
 import sys
 import traceback
 from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from typing import Dict, List, Optional
 from urllib.parse import urlparse, parse_qs
 
@@ -263,9 +263,8 @@ def start_factcheck_worker() -> None:
         _factcheck_process = subprocess.Popen(
             ["python3", worker_script],
             env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         logger.info(f"Fact-check worker started: PID {_factcheck_process.pid}")
 
@@ -1338,7 +1337,7 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    server = HTTPServer((PYTHON_HOST, PYTHON_PORT), KnowledgeHandler)
+    server = ThreadingHTTPServer((PYTHON_HOST, PYTHON_PORT), KnowledgeHandler)
     touch_factcheck_heartbeat()
     start_factcheck_worker()
     print(f"[knowledge_server] Python knowledge server running on {PYTHON_HOST}:{PYTHON_PORT}")

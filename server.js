@@ -313,6 +313,15 @@ const server = http.createServer(async (req, res) => {
         const memory = payload.memory || {};
 
         try {
+          const pyHealthy = await pyHealthCheck();
+          if (!pyHealthy) {
+            sendJson(res, 503, {
+              error: "AI unavailable: Python memory engine is restarting. Retry in a few seconds.",
+              retryable: true,
+            });
+            return;
+          }
+
           const pyUrl = new URL(`${PYTHON_KNOWLEDGE_SERVER}/chat`);
           const pyTransport = pyUrl.protocol === "https:" ? https : http;
           const pyPayload = JSON.stringify({ prompt: text, memory });
@@ -356,6 +365,10 @@ const server = http.createServer(async (req, res) => {
           try {
             pyResponse = await callPython();
           } catch (firstErr) {
+            const retryHealthy = await pyHealthCheck();
+            if (!retryHealthy) {
+              throw new Error("Python server unavailable after first attempt");
+            }
             console.warn(`[main] Python chat attempt 1 failed: ${firstErr.message} — retrying in 3s`);
             await new Promise((r) => setTimeout(r, 3000));
             pyResponse = await callPython(); // let second failure propagate
