@@ -93,6 +93,7 @@ _term_knowledge_cache: Dict[str, object] = {
     "data": {"aliases": {}, "definitions": {}},
 }
 _term_knowledge_lock = threading.Lock()
+_term_knowledge_missing_logged = False
 
 # Cache parsed knowledge corpus used by search to avoid re-downloading FTP files
 # on every chat request.
@@ -140,6 +141,7 @@ def ftp_load_term_knowledge(force_refresh: bool = False) -> Dict[str, Dict[str, 
       "definitions": {"constitution": "..."}
     }
     """
+    global _term_knowledge_missing_logged
     now = time.time()
     with _term_knowledge_lock:
         loaded_at = float(_term_knowledge_cache.get("loaded_at", 0.0) or 0.0)
@@ -184,7 +186,9 @@ def ftp_load_term_knowledge(force_refresh: bool = False) -> Dict[str, Dict[str, 
         # Fresh deployments may not have the optional term knowledge file yet.
         err = str(exc)
         if "550" in err or "No such file" in err:
-            logger.info(f"Optional term knowledge file not found on FTP: {remote_path}")
+            if not _term_knowledge_missing_logged:
+                logger.info(f"Optional term knowledge file not found on FTP: {remote_path}")
+                _term_knowledge_missing_logged = True
         else:
             logger.warning(f"Could not load term knowledge from FTP: {exc}", exc_info=True)
     except Exception as exc:
