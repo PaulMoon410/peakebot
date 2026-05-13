@@ -44,6 +44,7 @@ logger = logging.getLogger('knowledge_server')
 KNOWLEDGE_ENGINE = os.environ.get("KNOWLEDGE_ENGINE", "memory-retrieval")
 ENABLE_CROSS_VERIFY = os.environ.get("ENABLE_CROSS_VERIFY", "true").lower() != "false"
 BOT_NAME = os.environ.get("BOT_NAME", "Chessie")
+KNOWLEDGE_LOG_HEALTH_REQUESTS = os.environ.get("KNOWLEDGE_LOG_HEALTH_REQUESTS", "false").lower() == "true"
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -1056,7 +1057,7 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):  # noqa: N802
         try:
-            if not self.path.startswith("/health") or logger.isEnabledFor(logging.DEBUG):
+            if not self.path.startswith("/health") or KNOWLEDGE_LOG_HEALTH_REQUESTS:
                 logger.debug(f"GET {self.path}")
             parsed = urlparse(self.path)
             qs = parse_qs(parsed.query)
