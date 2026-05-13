@@ -33,6 +33,9 @@ FACTCHECK_HEARTBEAT_PATH = os.environ.get("FACTCHECK_HEARTBEAT_PATH", f"{FTP_BRA
 FACTCHECK_STATE_PATH = os.environ.get("FACTCHECK_STATE_PATH", f"{FTP_BRAIN_DIR.rstrip('/')}/factcheck_state.json")
 FACTCHECK_FACTS_PATH = os.environ.get("FACTCHECK_FACTS_PATH", f"{FTP_BRAIN_DIR.rstrip('/')}/factcheck_facts.json")
 FACTCHECK_WORKER_STATUS_PATH = os.environ.get("FACTCHECK_WORKER_STATUS_PATH", "/tmp/factcheck_worker_status.json")
+FACTCHECK_FACTS_MAX_FILE_MB = int(os.environ.get("FACTCHECK_FACTS_MAX_FILE_MB", "10"))
+FACTCHECK_FACTS_MAX_FILE_BYTES = max(1, FACTCHECK_FACTS_MAX_FILE_MB) * 1024 * 1024
+FACTCHECK_AGGRESSIVE_IDLE_INTERVAL = int(os.environ.get("FACTCHECK_AGGRESSIVE_IDLE_INTERVAL", "10"))
 
 
 def _ftp_connect() -> ftplib.FTP:  # type: ignore[type-arg]
@@ -88,6 +91,62 @@ def write_worker_status(payload: dict) -> None:
             json.dump(payload, f, ensure_ascii=False, indent=2)
     except Exception:
         return
+
+
+def _fact_chunk_filename(chunk_index: int) -> str:
+    return f"{FTP_BRAIN_DIR}/fact_{chunk_index:02d}.json"
+
+
+def _get_fact_chunk_index_from_ftp(ftp: ftplib.FTP) -> int:  # type: ignore[type-arg]
+    """Find the highest numbered fact chunk currently on FTP."""
+    try:
+        ftp.cwd(FTP_BRAIN_DIR)
+        names = ftp.nlst()
+        indices = []
+        for name in names:
+            m = re.fullmatch(r"fact_(\d{2,3})\.json", name)
+            if m:
+                try:
+                    indices.append(int(m.group(1)))
+                except ValueError:
+                    pass
+        return max(indices) if indices else 1
+    except Exception:
+        return 1
+
+
+def _append_fact_to_chunks(fact_entry: dict) -> bool:
+    """Append a single fact to chunked fact files, rotating to new file at 10MB limit."""
+    try:
+        ftp = _ftp_connect()
+        _ensure_ftp_dir(ftp, FTP_BRAIN_DIR)
+
+        chunk_idx = _get_fact_chunk_index_from_ftp(ftp)
+        target_file = _fact_chunk_filename(chunk_idx)
+
+        existing_facts = []
+        try:
+            buf = io.BytesIO()
+            ftp.retrbinary(f"RETR {target_file}", buf.write)
+            buf.seek(0)
+            data = json.loads(buf.read().decode("utf-8"))
+            existing_facts = data if isinstance(data, list) else []
+        except ftplib.error_perm:
+            existing_facts = []
+
+        candidate = existing_facts + [fact_entry]
+        payload = json.dumps(candidate, indent=2, ensure_ascii=False).encode("utf-8")
+
+        if len(payload) > FACTCHECK_FACTS_MAX_FILE_BYTES:
+            chunk_idx += 1
+            target_file = _fact_chunk_filename(chunk_idx)
+            payload = json.dumps([fact_entry], indent=2, ensure_ascii=False).encode("utf-8")
+
+        ftp.storbinary(f"STOR {target_file}", io.BytesIO(payload))
+        ftp.quit()
+        return True
+    except Exception:
+        return False
 
 
 def is_whitelisted(url: str) -> bool:
@@ -223,7 +282,8 @@ def is_idle() -> bool:
     return age >= FACTCHECK_IDLE_SECONDS
 
 
-def run_once() -> dict:
+def run_once(aggressive_mode: bool = False) -> dict:
+    """Run verification pass. In aggressive_mode, fetch more facts even if not all processed."""
     run_info = {
         "ran": False,
         "idle": False,
@@ -271,10 +331,13 @@ def run_once() -> dict:
 
     if not candidates:
         run_info["reason"] = "no_candidates"
+        if aggressive_mode:
+            run_info["reason"] = "no_candidates_aggressive"
         return run_info
 
     added = 0
-    selected = candidates[:FACTCHECK_MAX_ITEMS_PER_RUN]
+    max_per_run = FACTCHECK_MAX_ITEMS_PER_RUN * 2 if aggressive_mode else FACTCHECK_MAX_ITEMS_PER_RUN
+    selected = candidates[:max_per_run]
     run_info["checked"] = len(selected)
     for key, user_msg in selected:
         query = extract_query_terms(user_msg)
@@ -293,7 +356,7 @@ def run_once() -> dict:
         if fact_id in existing_ids:
             continue
 
-        facts_payload.setdefault("facts", []).append({
+        new_fact = {
             "id": fact_id,
             "category": "factcheck",
             "fact": fact_text.split(".")[0].strip(),
@@ -302,7 +365,9 @@ def run_once() -> dict:
             "sources": [source_url] if source_url else ["wikipedia.org"],
             "query": user_msg,
             "verifiedAt": datetime.now(timezone.utc).isoformat(),
-        })
+        }
+        facts_payload.setdefault("facts", []).append(new_fact)
+        _append_fact_to_chunks(new_fact)
         existing_ids.add(fact_id)
         added += 1
 
@@ -323,12 +388,18 @@ def main() -> None:
     started_at = datetime.now(timezone.utc).isoformat()
     loops = 0
     total_added = 0
+    idle_loops = 0
     while True:
         loops += 1
         now_iso = datetime.now(timezone.utc).isoformat()
         try:
-            run_info = run_once()
+            is_aggressive = idle_loops > 0
+            run_info = run_once(aggressive_mode=is_aggressive)
             total_added += int(run_info.get("added", 0) or 0)
+            if run_info.get("idle"):
+                idle_loops = min(idle_loops + 1, 10)
+            else:
+                idle_loops = 0
             write_worker_status({
                 "started_at": started_at,
                 "last_loop_at": now_iso,
@@ -338,6 +409,7 @@ def main() -> None:
                 "last_added": int(run_info.get("added", 0) or 0),
                 "last_reason": str(run_info.get("reason") or ""),
                 "loops": loops,
+                "idle_loops": idle_loops,
                 "total_added": total_added,
                 "last_error": "",
             })
@@ -351,10 +423,12 @@ def main() -> None:
                 "last_added": 0,
                 "last_reason": "exception",
                 "loops": loops,
+                "idle_loops": idle_loops,
                 "total_added": total_added,
                 "last_error": str(exc),
             })
-        time.sleep(max(30, FACTCHECK_INTERVAL_SECONDS))
+        sleep_time = FACTCHECK_AGGRESSIVE_IDLE_INTERVAL if idle_loops > 0 else max(30, FACTCHECK_INTERVAL_SECONDS)
+        time.sleep(sleep_time)
 
 
 if __name__ == "__main__":
