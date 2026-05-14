@@ -1031,6 +1031,23 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
 
     def _send(self, status: int, body: dict) -> None:
         encoded = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        max_response_bytes = 10 * 1024 * 1024  # 10 MB safety limit
+        if len(encoded) > max_response_bytes:
+            # Send error if response is too large
+            error_body = json.dumps({
+                "error": "Response too large to send (limit 10 MB)",
+                "size_bytes": len(encoded)
+            }, ensure_ascii=False).encode("utf-8")
+            try:
+                self.send_response(500)
+                for k, v in _cors_headers().items():
+                    self.send_header(k, v)
+                self.send_header("Content-Length", str(len(error_body)))
+                self.end_headers()
+                self.wfile.write(error_body)
+            except Exception:
+                pass
+            return
         try:
             self.send_response(status)
             for k, v in _cors_headers().items():

@@ -7,6 +7,7 @@ const elements = {
   chatForm: document.querySelector("#chat-form"),
   chatInput: document.querySelector("#chat-input"),
   chatSubmit: document.querySelector("#chat-form button[type='submit']"),
+  quickReplies: document.querySelector("#quick-replies"),
   memoryPreview: document.querySelector("#memory-preview"),
   status: document.querySelector("#status"),
   connectionStatus: document.querySelector("#connection-status"),
@@ -19,6 +20,37 @@ const elements = {
   loadUrl: document.querySelector("#load-url"),
   loadUrlButton: document.querySelector("#load-url-button"),
   importFile: document.querySelector("#import-file"),
+// Common quick replies and phrases
+const QUICK_REPLIES = [
+  "Hello!",
+  "Thank you!",
+  "Can you help me?",
+  "What do you remember about me?",
+  "Remember that my favorite color is blue",
+  "Tell me a fun fact",
+  "What is the weather today?",
+  "How do I reset my memory?",
+  "Goodbye!",
+  "Who are you?",
+  "Summarize our last conversation.",
+  "Save this note: Call mom tomorrow.",
+  "What is PeakeBot?",
+  "List all facts you know.",
+  "Export memory."
+];
+
+function renderQuickReplies() {
+  if (!elements.quickReplies) return;
+  elements.quickReplies.innerHTML = QUICK_REPLIES.map(
+    (text) => `<button type="button" class="quick-reply-btn">${escapeHtml(text)}</button>`
+  ).join("");
+  elements.quickReplies.querySelectorAll(".quick-reply-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      elements.chatInput.value = btn.textContent;
+      elements.chatInput.focus();
+    });
+  });
+}
 };
 
 const defaultMemory = () => ({
@@ -643,6 +675,7 @@ function registerEvents() {
   }
 }
 
+renderQuickReplies();
 registerEvents();
 initializeMemory();
 seedWelcomeMessage();
