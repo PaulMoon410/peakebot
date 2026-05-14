@@ -1,3 +1,62 @@
+// --- Idle/background web search logic ---
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const SHUTDOWN_SEARCH_DELAY_MS = 60 * 1000; // 1 minute
+let idleTimer = null;
+let lastActivity = Date.now();
+const ACQUIRED_KNOWLEDGE_FILE = path.join(__dirname, "..", "ai_know", "web_acquired_facts.json");
+
+function resetIdleTimer() {
+  lastActivity = Date.now();
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(triggerWebSearch, IDLE_TIMEOUT_MS);
+}
+
+async function triggerWebSearch() {
+  try {
+    // Example: fetch a random Wikipedia summary
+    const url = "https://en.wikipedia.org/api/rest_v1/page/random/summary";
+    https.get(url, (res) => {
+      let data = "";
+      res.on("data", (chunk) => { data += chunk; });
+      res.on("end", () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.title && parsed.extract) {
+            const fact = {
+              timestamp: new Date().toISOString(),
+              source: "wikipedia",
+              title: parsed.title,
+              summary: parsed.extract
+            };
+            let facts = [];
+            if (fs.existsSync(ACQUIRED_KNOWLEDGE_FILE)) {
+              try { facts = JSON.parse(fs.readFileSync(ACQUIRED_KNOWLEDGE_FILE, "utf8")); } catch {}
+            }
+            facts.push(fact);
+            fs.writeFileSync(ACQUIRED_KNOWLEDGE_FILE, JSON.stringify(facts, null, 2), "utf8");
+            console.log(`[idle-web-search] Acquired fact: ${parsed.title}`);
+          }
+        } catch (err) {
+          console.error("[idle-web-search] Failed to parse Wikipedia response", err);
+        }
+      });
+    }).on("error", (err) => {
+      console.error("[idle-web-search] Wikipedia fetch error", err);
+    });
+  } catch (err) {
+    console.error("[idle-web-search] Unexpected error", err);
+  } finally {
+    // Schedule next idle search
+    idleTimer = setTimeout(triggerWebSearch, IDLE_TIMEOUT_MS);
+  }
+}
+
+// Listen for SIGTERM (Render spin-down)
+process.on("SIGTERM", () => {
+  console.log("[idle-web-search] SIGTERM received, scheduling web search in 1 minute");
+  setTimeout(triggerWebSearch, SHUTDOWN_SEARCH_DELAY_MS);
+});
+
 const http = require("http");
 const https = require("https");
 const fs = require("fs");
@@ -240,6 +299,7 @@ function serveStatic(req, res, pathname) {
 }
 
 const server = http.createServer(async (req, res) => {
+  resetIdleTimer();
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
   // Handle CORS preflight
