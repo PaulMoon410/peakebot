@@ -15,3 +15,4 @@
 #
 # Optional: install Flask if you prefer a Flask-based variant in the future
 # flask>=3.0.0
+# gunicorn
