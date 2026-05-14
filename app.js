@@ -20,6 +20,8 @@ const elements = {
   loadUrl: document.querySelector("#load-url"),
   loadUrlButton: document.querySelector("#load-url-button"),
   importFile: document.querySelector("#import-file"),
+};
+
 // Common quick replies and phrases
 const QUICK_REPLIES = [
   "Hello!",
@@ -51,7 +53,6 @@ function renderQuickReplies() {
     });
   });
 }
-};
 
 const defaultMemory = () => ({
   profile: {
