@@ -1,6 +1,6 @@
 {
   "name": "peakecoin-ai",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "AI chat interface with memory persistence and Llama integration",
   "main": "server.js",
   "scripts": {
