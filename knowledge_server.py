@@ -1269,18 +1269,17 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 touch_factcheck_heartbeat()
 
                 try:
+                    # Always use cached term knowledge; never force refresh in chat flow
                     term_knowledge = ftp_load_term_knowledge()
 
-                    # Search FTP knowledge base with retries and progressive refresh.
+                    # Search FTP knowledge base with retries, but never force-refresh term knowledge
                     relevant: List[dict] = []
                     attempts = max(1, min(CHAT_SEARCH_RETRIES, 5))
                     for attempt in range(attempts):
                         if attempt > 0:
                             with _search_corpus_lock:
                                 _search_corpus_cache.clear()
-                        if attempt >= 2:
-                            term_knowledge = ftp_load_term_knowledge(force_refresh=True)
-
+                        # Do NOT force_refresh term knowledge here; only refresh on /sync or admin action
                         per_attempt_limit = 5 if attempt == 0 else 8
                         relevant = ftp_search_relevant_knowledge(
                             prompt,

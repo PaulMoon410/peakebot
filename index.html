@@ -40,9 +40,18 @@
     <main class="main-panel">
       <section class="chat panel">
         <div id="chat-log" class="chat-log"></div>
-        <div id="quick-replies" class="quick-replies"></div>
+        <!-- Quick replies removed -->
         <form id="chat-form" class="chat-form">
-          <textarea id="chat-input" rows="3" placeholder="Try: remember that my favorite color is blue"></textarea>
+          <label for="conversation-mode" style="font-size:0.95em; color:#aab2d5; margin-bottom:0.3em;">Conversation Mode:</label>
+          <select id="conversation-mode" style="margin-bottom:0.5em; border-radius:8px; padding:0.5em;">
+            <option value="general">General Conversation</option>
+            <option value="coding">Coding</option>
+            <option value="writing">Writing</option>
+            <option value="crypto">Crypto Talk</option>
+            <option value="chess">Chess</option>
+            <option value="fact">Fact/Knowledge</option>
+          </select>
+          <textarea id="chat-input" rows="3" placeholder="Type your message..."></textarea>
           <button type="submit">Send</button>
         </form>
       </section>

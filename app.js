@@ -7,7 +7,7 @@ const elements = {
   chatForm: document.querySelector("#chat-form"),
   chatInput: document.querySelector("#chat-input"),
   chatSubmit: document.querySelector("#chat-form button[type='submit']"),
-  quickReplies: document.querySelector("#quick-replies"),
+  conversationMode: document.querySelector("#conversation-mode"),
   memoryPreview: document.querySelector("#memory-preview"),
   status: document.querySelector("#status"),
   connectionStatus: document.querySelector("#connection-status"),
@@ -22,37 +22,8 @@ const elements = {
   importFile: document.querySelector("#import-file"),
 };
 
-// Common quick replies and phrases
-const QUICK_REPLIES = [
-  "Hello!",
-  "Thank you!",
-  "Can you help me?",
-  "What do you remember about me?",
-  "Remember that my favorite color is blue",
-  "Tell me a fun fact",
-  "What is the weather today?",
-  "How do I reset my memory?",
-  "Goodbye!",
-  "Who are you?",
-  "Summarize our last conversation.",
-  "Save this note: Call mom tomorrow.",
-  "What is PeakeBot?",
-  "List all facts you know.",
-  "Export memory."
-];
 
-function renderQuickReplies() {
-  if (!elements.quickReplies) return;
-  elements.quickReplies.innerHTML = QUICK_REPLIES.map(
-    (text) => `<button type="button" class="quick-reply-btn">${escapeHtml(text)}</button>`
-  ).join("");
-  elements.quickReplies.querySelectorAll(".quick-reply-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      elements.chatInput.value = btn.textContent;
-      elements.chatInput.focus();
-    });
-  });
-}
+// Quick replies removed
 
 const defaultMemory = () => ({
   profile: {
@@ -335,7 +306,25 @@ function clearMemory() {
 
 async function generateReply(prompt) {
   const text = prompt.trim();
-  const lower = text.toLowerCase();
+  // Optionally, prepend the selected mode to the prompt for backend context
+  let mode = elements.conversationMode ? elements.conversationMode.value : "general";
+  let modePrefix = "";
+  switch (mode) {
+    case "coding":
+      modePrefix = "[Coding] "; break;
+    case "writing":
+      modePrefix = "[Writing] "; break;
+    case "crypto":
+      modePrefix = "[Crypto Talk] "; break;
+    case "chess":
+      modePrefix = "[Chess] "; break;
+    case "fact":
+      modePrefix = "[Fact/Knowledge] "; break;
+    default:
+      modePrefix = "";
+  }
+  const fullPrompt = modePrefix + text;
+  const lower = fullPrompt.toLowerCase();
   state.lastFtpStatus = "";
 
   const rememberMatch = lower.match(/^remember that (.+?) is (.+)$/i) || lower.match(/^remember (.+?) is (.+)$/i);
@@ -372,17 +361,17 @@ async function generateReply(prompt) {
   try {
     // Chat runs through the Render Node proxy to the Python memory engine.
     if (state.nodeConnected) {
-      try {
-        const sendChatRequest = async () => {
-          return fetch(`${RENDER_SERVER}/api/chat`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              prompt: text,
-              memory: state.memory,
-            }),
-          });
-        };
+        try {
+          const sendChatRequest = async () => {
+            return fetch(`${RENDER_SERVER}/api/chat`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                prompt: fullPrompt,
+                memory: state.memory,
+              }),
+            });
+          };
 
         let nodeResponse = await sendChatRequest();
 
@@ -539,9 +528,8 @@ function handleFileImport(event) {
   reader.readAsText(file);
 }
 
-function seedWelcomeMessage() {
-  addMessage("ai", "Hello! I use a Python memory engine with FTP-backed recall. Ask me anything, remember facts, or save notes.");
-}
+
+// Removed seedWelcomeMessage to eliminate quick conversation starter
 
 async function checkConnections() {
   // Check Render Node server and Python engine status.
@@ -676,7 +664,7 @@ function registerEvents() {
   }
 }
 
-renderQuickReplies();
+// Quick replies removed
 registerEvents();
 initializeMemory();
-seedWelcomeMessage();
+  // Quick replies and welcome message removed
