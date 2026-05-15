@@ -1,3 +1,23 @@
+# ---------------------------------------------------------------------------
+# Imports (must be at the top!)
+# ---------------------------------------------------------------------------
+import os
+import json
+import ftplib
+import io
+import re
+import subprocess
+import time
+import threading
+import logging
+import sys
+import traceback
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
+from typing import Dict, List, Optional
+from urllib.parse import urlparse, parse_qs
+import urllib.request
+
 # --- Extra startup and health logging ---
 def log_startup_info():
     logger.info(f"[startup] Python knowledge server starting on {PYTHON_HOST}:{PYTHON_PORT}")
@@ -6,8 +26,6 @@ def log_startup_info():
     logger.info(f"[startup] KNOWLEDGE_ENGINE: {KNOWLEDGE_ENGINE}")
     logger.info(f"[startup] ENABLE_CROSS_VERIFY: {ENABLE_CROSS_VERIFY}")
     logger.info(f"[startup] FACTCHECK_ENABLED: {FACTCHECK_ENABLED}")
-
-import urllib.request
 # ---------------------------------------------------------------------------
 # Remote knowledge directory support
 # ---------------------------------------------------------------------------
