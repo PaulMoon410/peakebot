@@ -1,3 +1,42 @@
+import urllib.request
+# ---------------------------------------------------------------------------
+# Remote knowledge directory support
+# ---------------------------------------------------------------------------
+
+REMOTE_KNOWLEDGE_URL = os.environ.get("REMOTE_KNOWLEDGE_URL", "").rstrip("/")
+
+def list_remote_json_files():
+    """List .json files from a remote HTTP directory (expects HTML with links or a JSON array)."""
+    if not REMOTE_KNOWLEDGE_URL:
+        return []
+    try:
+        with urllib.request.urlopen(REMOTE_KNOWLEDGE_URL) as resp:
+            content = resp.read().decode("utf-8")
+        # Try to parse as JSON array first
+        try:
+            files = json.loads(content)
+            if isinstance(files, list):
+                return [f for f in files if f.endswith(".json")]
+        except Exception:
+            pass
+        # Fallback: parse HTML for .json links
+        import re
+        return re.findall(r'href=["\\\']([^"\\\']+\.json)["\\\']', content)
+    except Exception as e:
+        logger.warning(f"Could not list remote .json files: {e}")
+        return []
+
+def read_remote_json_file(filename):
+    """Read a .json file directly from the remote HTTP directory."""
+    if not REMOTE_KNOWLEDGE_URL:
+        return None
+    url = REMOTE_KNOWLEDGE_URL + "/" + filename
+    try:
+        with urllib.request.urlopen(url) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        logger.warning(f"Could not read remote .json file {filename}: {e}")
+        return None
 #!/usr/bin/env python3
 """
 Knowledge Server - Python companion to the Node.js peakebot server.
@@ -468,39 +507,20 @@ def ftp_load_knowledge_for_search(max_files: Optional[int] = None) -> List[dict]
                 return cached
 
     conversations: List[dict] = []
-    ftp = _ftp_connect()
-    try:
-        try:
-
-            ftp.cwd(FTP_BRAIN_DIR)
-        except ftplib.error_perm:
-            return []
-
-        filenames = [name for name in ftp.nlst() if name.endswith(".json")]
-        # Reverse sort gives newest-first for date-style names and still includes legacy names.
+    if REMOTE_KNOWLEDGE_URL:
+        filenames = list_remote_json_files()
         filenames = sorted(filenames, reverse=True)
         if max_files is not None and max_files > 0:
             filenames = filenames[:max_files]
-
         for filename in filenames:
-            buf = io.BytesIO()
-            try:
-                ftp.retrbinary(f"RETR {filename}", buf.write)
-            except ftplib.error_perm:
+            data = read_remote_json_file(filename)
+            if not data:
                 continue
-
-            buf.seek(0)
-            try:
-                data = json.loads(buf.read().decode("utf-8"))
-            except Exception:
-                continue
-
             # Format A: list of conversation dicts
             if isinstance(data, list):
                 for item in data:
                     if isinstance(item, dict):
                         item_copy = dict(item)
-                        # Expand searchable text using embedded memory_state facts.
                         memory_state = item.get("memory_state", {})
                         facts = memory_state.get("facts", []) if isinstance(memory_state, dict) else []
                         fact_fragments: List[str] = []
@@ -513,17 +533,13 @@ def ftp_load_knowledge_for_search(max_files: Optional[int] = None) -> List[dict]
                                 category = str(fact.get("category") or "").strip()
                                 if fact_text:
                                     fact_fragments.append(" ".join(x for x in [category, fact_text, context_text] if x))
-
                         if fact_fragments:
                             base_user = str(item_copy.get("user_message") or "")
                             item_copy["search_text"] = (base_user + " " + " ".join(fact_fragments)).strip()
-
                         item_copy["source_file"] = filename
                         conversations.append(item_copy)
-
             # Format B: object containing facts/conversations arrays
             elif isinstance(data, dict):
-                # Handle flat single-entry conversation JSON files.
                 flat_user = str(data.get("user_message") or data.get("user") or "").strip()
                 flat_ai = str(data.get("ai_response") or data.get("ai") or "").strip()
                 if flat_user or flat_ai:
@@ -534,8 +550,6 @@ def ftp_load_knowledge_for_search(max_files: Optional[int] = None) -> List[dict]
                         "source_file": filename,
                         "entry_type": "flat_conversation",
                     })
-
-                # Convert conversation objects if present.
                 file_conversations = data.get("conversations", [])
                 if isinstance(file_conversations, list):
                     for entry in file_conversations:
@@ -552,8 +566,6 @@ def ftp_load_knowledge_for_search(max_files: Optional[int] = None) -> List[dict]
                             "source_file": filename,
                             "entry_type": "conversation",
                         })
-
-                # Convert fact objects to searchable pseudo conversations.
                 facts = data.get("facts", [])
                 if isinstance(facts, list):
                     for fact in facts:
@@ -566,15 +578,11 @@ def ftp_load_knowledge_for_search(max_files: Optional[int] = None) -> List[dict]
                         fact_query = str(fact.get("query") or "").strip()
                         sources = fact.get("sources") or []
                         source_text = " ".join(str(s).strip() for s in sources if str(s).strip()) if isinstance(sources, list) else ""
-
                         if not fact_text:
                             continue
-
-                        # user_message holds searchable metadata; ai_response is the canonical fact.
                         searchable_prompt = " ".join(
                             part for part in [category, fact_id, fact_query, fact_text, context_text, source_text] if part
                         )
-
                         conversations.append({
                             "timestamp": data.get("profile", {}).get("updatedAt"),
                             "user_message": searchable_prompt,
@@ -584,7 +592,108 @@ def ftp_load_knowledge_for_search(max_files: Optional[int] = None) -> List[dict]
                             "category": category,
                             "fact_id": fact_id,
                         })
-
+        with _search_corpus_lock:
+            _search_corpus_cache[cache_key] = {
+                "loaded_at": now,
+                "data": conversations,
+            }
+        return conversations
+    # Fallback to FTP if REMOTE_KNOWLEDGE_URL is not set
+    ftp = _ftp_connect()
+    try:
+        try:
+            ftp.cwd(FTP_BRAIN_DIR)
+        except ftplib.error_perm:
+            return []
+        filenames = [name for name in ftp.nlst() if name.endswith(".json")]
+        filenames = sorted(filenames, reverse=True)
+        if max_files is not None and max_files > 0:
+            filenames = filenames[:max_files]
+        for filename in filenames:
+            buf = io.BytesIO()
+            try:
+                ftp.retrbinary(f"RETR {filename}", buf.write)
+            except ftplib.error_perm:
+                continue
+            buf.seek(0)
+            try:
+                data = json.loads(buf.read().decode("utf-8"))
+            except Exception:
+                continue
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict):
+                        item_copy = dict(item)
+                        memory_state = item.get("memory_state", {})
+                        facts = memory_state.get("facts", []) if isinstance(memory_state, dict) else []
+                        fact_fragments: List[str] = []
+                        if isinstance(facts, list):
+                            for fact in facts:
+                                if not isinstance(fact, dict):
+                                    continue
+                                fact_text = str(fact.get("fact") or "").strip()
+                                context_text = str(fact.get("context") or "").strip()
+                                category = str(fact.get("category") or "").strip()
+                                if fact_text:
+                                    fact_fragments.append(" ".join(x for x in [category, fact_text, context_text] if x))
+                        if fact_fragments:
+                            base_user = str(item_copy.get("user_message") or "")
+                            item_copy["search_text"] = (base_user + " " + " ".join(fact_fragments)).strip()
+                        item_copy["source_file"] = filename
+                        conversations.append(item_copy)
+            elif isinstance(data, dict):
+                flat_user = str(data.get("user_message") or data.get("user") or "").strip()
+                flat_ai = str(data.get("ai_response") or data.get("ai") or "").strip()
+                if flat_user or flat_ai:
+                    conversations.append({
+                        "timestamp": data.get("timestamp"),
+                        "user_message": flat_user,
+                        "ai_response": flat_ai,
+                        "source_file": filename,
+                        "entry_type": "flat_conversation",
+                    })
+                file_conversations = data.get("conversations", [])
+                if isinstance(file_conversations, list):
+                    for entry in file_conversations:
+                        if not isinstance(entry, dict):
+                            continue
+                        user_text = str(entry.get("user_message") or entry.get("user") or "").strip()
+                        ai_text = str(entry.get("ai_response") or entry.get("ai") or "").strip()
+                        if not user_text and not ai_text:
+                            continue
+                        conversations.append({
+                            "timestamp": entry.get("timestamp"),
+                            "user_message": user_text,
+                            "ai_response": ai_text,
+                            "source_file": filename,
+                            "entry_type": "conversation",
+                        })
+                facts = data.get("facts", [])
+                if isinstance(facts, list):
+                    for fact in facts:
+                        if not isinstance(fact, dict):
+                            continue
+                        fact_text = str(fact.get("fact") or "").strip()
+                        context_text = str(fact.get("context") or "").strip()
+                        category = str(fact.get("category") or "").strip()
+                        fact_id = str(fact.get("id") or "").strip()
+                        fact_query = str(fact.get("query") or "").strip()
+                        sources = fact.get("sources") or []
+                        source_text = " ".join(str(s).strip() for s in sources if str(s).strip()) if isinstance(sources, list) else ""
+                        if not fact_text:
+                            continue
+                        searchable_prompt = " ".join(
+                            part for part in [category, fact_id, fact_query, fact_text, context_text, source_text] if part
+                        )
+                        conversations.append({
+                            "timestamp": data.get("profile", {}).get("updatedAt"),
+                            "user_message": searchable_prompt,
+                            "ai_response": fact_text if not context_text else f"{fact_text}. {context_text}",
+                            "source_file": filename,
+                            "entry_type": "fact",
+                            "category": category,
+                            "fact_id": fact_id,
+                        })
         with _search_corpus_lock:
             _search_corpus_cache[cache_key] = {
                 "loaded_at": now,
