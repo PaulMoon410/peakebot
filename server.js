@@ -1,3 +1,5 @@
+
+const path = require("path");
 // --- Idle/background web search logic ---
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const SHUTDOWN_SEARCH_DELAY_MS = 60 * 1000; // 1 minute
