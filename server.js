@@ -1,4 +1,11 @@
 
+const http = require("http");
+const https = require("https");
+const fs = require("fs");
+const path = require("path");
+const { URL } = require("url");
+const { spawn } = require("child_process");
+
 // --- Idle/background web search logic ---
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const SHUTDOWN_SEARCH_DELAY_MS = 60 * 1000; // 1 minute
@@ -58,12 +65,6 @@ process.on("SIGTERM", () => {
   setTimeout(triggerWebSearch, SHUTDOWN_SEARCH_DELAY_MS);
 });
 
-const http = require("http");
-const https = require("https");
-const fs = require("fs");
-const path = require("path");
-const { URL } = require("url");
-const { spawn } = require("child_process");
 
 const PORT = process.env.PORT || 3000;
 const PYTHON_PORT = parseInt(process.env.PYTHON_PORT || "5001", 10);
