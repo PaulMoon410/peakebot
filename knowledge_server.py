@@ -1,3 +1,12 @@
+# --- Extra startup and health logging ---
+def log_startup_info():
+    logger.info(f"[startup] Python knowledge server starting on {PYTHON_HOST}:{PYTHON_PORT}")
+    logger.info(f"[startup] REMOTE_KNOWLEDGE_URL: {REMOTE_KNOWLEDGE_URL or '(not set)'}")
+    logger.info(f"[startup] FTP_BRAIN_DIR: {FTP_BRAIN_DIR}")
+    logger.info(f"[startup] KNOWLEDGE_ENGINE: {KNOWLEDGE_ENGINE}")
+    logger.info(f"[startup] ENABLE_CROSS_VERIFY: {ENABLE_CROSS_VERIFY}")
+    logger.info(f"[startup] FACTCHECK_ENABLED: {FACTCHECK_ENABLED}")
+
 import urllib.request
 # ---------------------------------------------------------------------------
 # Remote knowledge directory support
@@ -1462,21 +1471,22 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    log_startup_info()
     server = ThreadingHTTPServer((PYTHON_HOST, PYTHON_PORT), KnowledgeHandler)
     touch_factcheck_heartbeat()
     start_factcheck_worker()
-    print(f"[knowledge_server] Python knowledge server running on {PYTHON_HOST}:{PYTHON_PORT}")
-    print(f"[knowledge_server] FTP host: {FTP_HOST}  |  brain dir: {FTP_BRAIN_DIR}")
-    print(f"[knowledge_server] Engine: {KNOWLEDGE_ENGINE}  |  Cross verify: {ENABLE_CROSS_VERIFY}")
-    print(f"[knowledge_server] Fact-check worker enabled: {FACTCHECK_ENABLED}")
-    print(f"[knowledge_server] Endpoints:")
-    print(f"  GET    /health")
-    print(f"  GET    /memory")
-    print(f"  PUT    /memory")
-    print(f"  GET    /knowledge?limit=50")
-    print(f"  GET    /knowledge/<filename>")
-    print(f"  GET    /knowledge/search?q=<query>")
-    print(f"  POST   /chat  {{prompt, memory}}")
+    logger.info(f"[knowledge_server] Python knowledge server running on {PYTHON_HOST}:{PYTHON_PORT}")
+    logger.info(f"[knowledge_server] FTP host: {FTP_HOST}  |  brain dir: {FTP_BRAIN_DIR}")
+    logger.info(f"[knowledge_server] Engine: {KNOWLEDGE_ENGINE}  |  Cross verify: {ENABLE_CROSS_VERIFY}")
+    logger.info(f"[knowledge_server] Fact-check worker enabled: {FACTCHECK_ENABLED}")
+    logger.info(f"[knowledge_server] Endpoints:")
+    logger.info(f"  GET    /health")
+    logger.info(f"  GET    /memory")
+    logger.info(f"  PUT    /memory")
+    logger.info(f"  GET    /knowledge?limit=50")
+    logger.info(f"  GET    /knowledge/<filename>")
+    logger.info(f"  GET    /knowledge/search?q=<query>")
+    logger.info(f"  POST   /chat  {{prompt, memory}}")
     print(f"  POST   /knowledge  {{user_message, ai_response, memory_state}}")
     print(f"  POST   /sync")
     try:
