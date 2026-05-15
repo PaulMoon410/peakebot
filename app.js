@@ -2,25 +2,80 @@ const IPFS_GATEWAY = "https://ipfs.io/ipfs/";
 const RENDER_SERVER = "https://peakebot.onrender.com";
 const CONNECTION_CHECK_INTERVAL_MS = 15000;
 
+
 const elements = {
-  chatLog: document.querySelector("#chat-log"),
-  chatForm: document.querySelector("#chat-form"),
-  chatInput: document.querySelector("#chat-input"),
-  chatSubmit: document.querySelector("#chat-form button[type='submit']"),
-  conversationMode: document.querySelector("#conversation-mode"),
-  memoryPreview: document.querySelector("#memory-preview"),
-  status: document.querySelector("#status"),
-  connectionStatus: document.querySelector("#connection-status"),
-  llamaStatus: document.querySelector("#llama-status"),
-  nodeStatus: document.querySelector("#node-status"),
-  memoryStats: document.querySelector("#memory-stats"),
-  exportMemory: document.querySelector("#export-memory"),
-  copyMemory: document.querySelector("#copy-memory"),
-  clearMemory: document.querySelector("#clear-memory"),
-  loadUrl: document.querySelector("#load-url"),
-  loadUrlButton: document.querySelector("#load-url-button"),
-  importFile: document.querySelector("#import-file"),
+  terminalWindow: document.querySelector("#terminal-window"),
+  terminalForm: document.querySelector("#terminal-form"),
+  terminalInput: document.querySelector("#terminal-input"),
+  npcContent: document.querySelector("#npc-content"),
+  debugContent: document.querySelector("#debug-content"),
 };
+
+// --- Interactive Shell Logic ---
+let terminalHistory = [];
+let terminalHistoryIndex = -1;
+
+function printToTerminal(text, type = "output") {
+  const div = document.createElement("div");
+  div.className = `terminal-line terminal-${type}`;
+  div.textContent = text;
+  elements.terminalWindow.appendChild(div);
+  elements.terminalWindow.scrollTop = elements.terminalWindow.scrollHeight;
+}
+
+function handleTerminalCommand(cmd) {
+  // Add your command handling logic here
+  if (!cmd.trim()) return;
+  if (cmd === "help") {
+    printToTerminal("Available commands: help, clear, echo <text>");
+  } else if (cmd === "clear") {
+    elements.terminalWindow.innerHTML = "";
+  } else if (cmd.startsWith("echo ")) {
+    printToTerminal(cmd.slice(5));
+  } else {
+    printToTerminal(`Command not found: ${cmd}`);
+  }
+}
+
+if (elements.terminalForm && elements.terminalInput && elements.terminalWindow) {
+  elements.terminalForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const cmd = elements.terminalInput.value;
+    if (!cmd.trim()) return;
+    printToTerminal(`> ${cmd}`, "input");
+    terminalHistory.push(cmd);
+    terminalHistoryIndex = terminalHistory.length;
+    handleTerminalCommand(cmd);
+    elements.terminalInput.value = "";
+  });
+
+  elements.terminalInput.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowUp") {
+      if (terminalHistoryIndex > 0) {
+        terminalHistoryIndex--;
+        elements.terminalInput.value = terminalHistory[terminalHistoryIndex] || "";
+      }
+      e.preventDefault();
+    } else if (e.key === "ArrowDown") {
+      if (terminalHistoryIndex < terminalHistory.length - 1) {
+        terminalHistoryIndex++;
+        elements.terminalInput.value = terminalHistory[terminalHistoryIndex] || "";
+      } else {
+        terminalHistoryIndex = terminalHistory.length;
+        elements.terminalInput.value = "";
+      }
+      e.preventDefault();
+    }
+  });
+}
+
+// --- Stub NPC and Debug Content ---
+if (elements.npcContent) {
+  elements.npcContent.textContent = "NPC is ready. Awaiting interaction...";
+}
+if (elements.debugContent) {
+  elements.debugContent.textContent = "Debug info will appear here.";
+}
 
 
 // Quick replies removed

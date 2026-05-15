@@ -7,60 +7,28 @@
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <h1>PeakeBot - Chessie</h1>
-      <p class="muted">Runtime memory tools in one place.</p>
 
-      <section class="panel">
-        <h2>Memory Tools</h2>
-        <p class="panel-note">Manage your memory data for export, copy, or reset.</p>
-        <div class="stack-actions">
-          <button id="export-memory">Export JSON</button>
-          <button id="copy-memory">Copy JSON</button>
-          <button id="clear-memory" class="danger">Clear Runtime Memory</button>
-        </div>
-      </section>
-
-      <section class="panel">
-        <h2>Status</h2>
-        <p class="startup-notice">It may take multiple chat attempts for the backend to fully connect with the frontend interface. Please be patient.</p>
-        <div id="connection-status" class="connection-status">
-          🔴 Connecting...
-        </div>
-        <div class="service-status-list">
-          <div id="llama-status" class="service-indicator offline">Python Engine: Checking...</div>
-          <div id="node-status" class="service-indicator offline">Node Server: Checking...</div>
-        </div>
-        <div id="status" class="status">Ready.</div>
-        <ul id="memory-stats" class="stats"></ul>
-      </section>
-    </aside>
-
-    <main class="main-panel">
-      <section class="chat panel">
-        <div id="chat-log" class="chat-log"></div>
-        <!-- Quick replies removed -->
-        <form id="chat-form" class="chat-form">
-          <label for="conversation-mode" style="font-size:0.95em; color:#aab2d5; margin-bottom:0.3em;">Conversation Mode:</label>
-          <select id="conversation-mode" style="margin-bottom:0.5em; border-radius:8px; padding:0.5em;">
-            <option value="general">General Conversation</option>
-            <option value="coding">Coding</option>
-            <option value="writing">Writing</option>
-            <option value="crypto">Crypto Talk</option>
-            <option value="chess">Chess</option>
-            <option value="fact">Fact/Knowledge</option>
-          </select>
-          <textarea id="chat-input" rows="3" placeholder="Type your message..."></textarea>
-          <button type="submit">Send</button>
+  <div class="app-shell terminal-layout">
+    <main class="main-terminal-panel">
+      <section class="terminal panel">
+        <h2>Main Terminal</h2>
+        <div id="terminal-window" class="terminal-window"></div>
+        <form id="terminal-form" class="terminal-form">
+          <input id="terminal-input" type="text" placeholder="Type a command..." autocomplete="off" />
+          <button type="submit">Run</button>
         </form>
       </section>
-
-      <section class="panel">
-        <h2>Runtime Memory Preview</h2>
-        <pre id="memory-preview" class="memory-preview"></pre>
-      </section>
     </main>
+    <aside class="right-sidebar">
+      <section class="npc-window panel">
+        <h2>NPC Window</h2>
+        <div id="npc-content" class="npc-content"></div>
+      </section>
+      <section class="debug-menu panel">
+        <h2>Debug Menu</h2>
+        <div id="debug-content" class="debug-content"></div>
+      </section>
+    </aside>
   </div>
 
   <script type="module" src="./app.js"></script>

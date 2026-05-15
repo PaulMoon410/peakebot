@@ -55,10 +55,105 @@ textarea {
   resize: vertical;
 }
 
-.app-shell {
+
+/* Terminal layout grid */
+.app-shell.terminal-layout {
   display: grid;
-  grid-template-columns: 340px 1fr;
+  grid-template-columns: 1fr 380px;
   min-height: 100vh;
+  gap: 0;
+}
+
+.main-terminal-panel {
+  padding: 1.5rem 2.5rem 1.5rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.right-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.5rem 1.5rem 1.5rem 0;
+  min-width: 340px;
+  max-width: 420px;
+}
+
+.npc-window {
+  flex: 0 0 auto;
+  min-height: 180px;
+  margin-bottom: 0.5rem;
+}
+
+.debug-menu {
+  flex: 1 1 auto;
+  min-height: 120px;
+}
+
+/* Terminal styles */
+.terminal.panel {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.5rem 1.5rem 1rem 1.5rem;
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-window {
+  background: #0e1325;
+  color: #e8ebff;
+  font-family: "Fira Mono", "Consolas", monospace;
+  font-size: 1.08rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  min-height: 320px;
+  max-height: 48vh;
+  overflow-y: auto;
+  padding: 1.1rem 1rem 1rem 1rem;
+  margin-bottom: 1.2rem;
+  box-shadow: 0 2px 8px 0 rgba(0,0,0,0.08);
+}
+
+.terminal-form {
+  display: flex;
+  gap: 0.7rem;
+}
+
+#terminal-input {
+  flex: 1 1 auto;
+  font-family: inherit;
+  font-size: 1.08rem;
+  padding: 0.7rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #181c2e;
+  color: var(--text);
+  outline: none;
+}
+
+#terminal-form button {
+  padding: 0.7rem 1.2rem;
+  border-radius: 8px;
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+}
+
+.npc-content {
+  min-height: 80px;
+  color: #e8ebff;
+  font-size: 1.05rem;
+}
+
+.debug-content {
+  min-height: 60px;
+  color: #aab2d5;
+  font-size: 0.98rem;
 }
 
 .sidebar {
