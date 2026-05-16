@@ -1,3 +1,18 @@
+/* Version footer */
+.footer-version {
+  width: 100%;
+  text-align: center;
+  padding: 0.7rem 0 0.5rem 0;
+  color: #aab2d5;
+  font-size: 1.02rem;
+  letter-spacing: 0.04em;
+  background: transparent;
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  z-index: 100;
+  pointer-events: none;
+}
 :root {
   color-scheme: dark;
   --bg: #0f1220;
