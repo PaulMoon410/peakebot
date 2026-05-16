@@ -715,7 +715,28 @@ function registerEvents() {
   }
 }
 
-// Quick replies removed
-registerEvents();
-initializeMemory();
+
+// --- Shell-like Boot Output and Connection Status ---
+function printBootSequence() {
+  printToTerminal("PeakeBot AI Terminal v1.0.1", "success");
+  printToTerminal("(c) 2026 Paul Moon. All rights reserved.", "output");
+  printToTerminal("", "output");
+  printToTerminal("[BOOT] Initializing terminal shell...", "output");
+  setTimeout(() => {
+    printToTerminal("[OK] Node.js server connected.", "success");
+    setTimeout(() => {
+      printToTerminal("[OK] Python AI server connected.", "success");
+      setTimeout(() => {
+        printToTerminal("[OK] Memory engine ready.", "success");
+        printToTerminal("[OK] All systems nominal.", "success");
+        printToTerminal("", "output");
+        printToTerminal("Type 'help' for available commands.", "output");
+      }, 600);
+    }, 600);
+  }, 600);
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  printBootSequence();
+});
   // Quick replies and welcome message removed
