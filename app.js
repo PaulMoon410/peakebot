@@ -748,9 +748,13 @@ function registerEvents() {
 
 
 // --- Shell-like Boot Output and Connection Status ---
+
 function printBootSequence() {
-  printToTerminal("PeakeBot AI Terminal v1.0.1", "success");
-  printToTerminal("(c) 2026 Paul Moon. All rights reserved.", "output");
+  // Banner
+  printToTerminal("┌──────────────────────────────────────────────┐", "success");
+  printToTerminal("│   PeakeBot AI Terminal   v1.0.1             │", "success");
+  printToTerminal("│   (c) 2026 Paul Moon. All rights reserved.   │", "success");
+  printToTerminal("└──────────────────────────────────────────────┘", "success");
   printToTerminal("", "output");
   printToTerminal("[BOOT] Initializing terminal shell...", "output");
   setTimeout(() => {

@@ -8,22 +8,17 @@
 </head>
 <body>
 
-  <div class="app-shell terminal-only-layout">
-    <main class="main-terminal-panel">
-      <section class="terminal panel">
-        <h2>Main Terminal</h2>
-        <div id="terminal-window" class="terminal-window"></div>
-        <form id="terminal-form" class="terminal-form">
-          <input id="terminal-input" type="text" placeholder="Type a command..." autocomplete="off" />
-          <button type="submit">Run</button>
-        </form>
-      </section>
-    </main>
+  <div class="terminal-shell-outer">
+    <div class="terminal-shell-window">
+      <div id="terminal-window" class="terminal-window"></div>
+      <form id="terminal-form" class="terminal-form">
+        <input id="terminal-input" type="text" placeholder="Type a command..." autocomplete="off" />
+        <button type="submit">Run</button>
+      </form>
+    </div>
   </div>
 
-  <footer class="footer-version">
-    <span id="version-string">PeakeBot (AI Terminal) Version v1.0.1</span>
-  </footer>
+  <!-- Version banner is now inside the terminal window -->
   <script type="module" src="./app.js"></script>
 </body>
 </html>
