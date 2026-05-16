@@ -22,10 +22,12 @@ function printToTerminal(text, type = "output") {
   elements.terminalWindow.scrollTop = elements.terminalWindow.scrollHeight;
 }
 
-function handleTerminalCommand(cmd) {
+
+async function handleTerminalCommand(cmd) {
   if (!cmd.trim()) return;
   if (cmd === "help") {
     printToTerminal("Available commands: help, clear, echo <text>", "success");
+    printToTerminal("All other input is sent to the backend AI.", "output");
   } else if (cmd === "clear") {
     elements.terminalWindow.innerHTML = "";
   } else if (cmd.startsWith("echo ")) {
@@ -37,7 +39,36 @@ function handleTerminalCommand(cmd) {
   } else if (cmd === "success") {
     printToTerminal("This is a success message.", "success");
   } else {
-    printToTerminal(`Command not found: ${cmd}`, "error");
+    // Send to backend AI
+    printToTerminal("[AI] Processing...", "output");
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: cmd }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        printToTerminal(`[AI Error] ${data.error || res.statusText}`, "error");
+        return;
+      }
+      const data = await res.json();
+      if (data.response) {
+        printToTerminal(data.response, "output");
+        if (data.verification) {
+          printToTerminal(`[Verification] ${data.verification}`, "success");
+        }
+        if (data.ftp && data.ftp.ok) {
+          printToTerminal(`[FTP] Knowledge saved.`, "success");
+        } else if (data.ftp && data.ftp.error) {
+          printToTerminal(`[FTP Error] ${data.ftp.error}`, "warning");
+        }
+      } else {
+        printToTerminal("[AI] No response.", "warning");
+      }
+    } catch (err) {
+      printToTerminal(`[Network Error] ${err.message}`, "error");
+    }
   }
 }
 
