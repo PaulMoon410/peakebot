@@ -1,3 +1,39 @@
+/* Terminal-only layout */
+.app-shell.terminal-only-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.main-terminal-panel {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 2.5rem 0 4rem 0;
+}
+
+/* Terminal output color classes */
+.terminal-line {
+  margin-bottom: 0.2em;
+  white-space: pre-wrap;
+}
+.terminal-input {
+  color: #7c9cff;
+}
+.terminal-output {
+  color: #e8ebff;
+}
+.terminal-error {
+  color: #ff6b81;
+}
+.terminal-success {
+  color: #9be8b4;
+}
+.terminal-warning {
+  color: #ffe066;
+}
 /* Version footer */
 .footer-version {
   width: 100%;

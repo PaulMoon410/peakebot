@@ -3,12 +3,11 @@ const RENDER_SERVER = "https://peakebot.onrender.com";
 const CONNECTION_CHECK_INTERVAL_MS = 15000;
 
 
+
 const elements = {
   terminalWindow: document.querySelector("#terminal-window"),
   terminalForm: document.querySelector("#terminal-form"),
   terminalInput: document.querySelector("#terminal-input"),
-  npcContent: document.querySelector("#npc-content"),
-  debugContent: document.querySelector("#debug-content"),
 };
 
 // --- Interactive Shell Logic ---
@@ -24,16 +23,21 @@ function printToTerminal(text, type = "output") {
 }
 
 function handleTerminalCommand(cmd) {
-  // Add your command handling logic here
   if (!cmd.trim()) return;
   if (cmd === "help") {
-    printToTerminal("Available commands: help, clear, echo <text>");
+    printToTerminal("Available commands: help, clear, echo <text>", "success");
   } else if (cmd === "clear") {
     elements.terminalWindow.innerHTML = "";
   } else if (cmd.startsWith("echo ")) {
-    printToTerminal(cmd.slice(5));
+    printToTerminal(cmd.slice(5), "output");
+  } else if (cmd === "error") {
+    printToTerminal("This is an error message.", "error");
+  } else if (cmd === "warn") {
+    printToTerminal("This is a warning message.", "warning");
+  } else if (cmd === "success") {
+    printToTerminal("This is a success message.", "success");
   } else {
-    printToTerminal(`Command not found: ${cmd}`);
+    printToTerminal(`Command not found: ${cmd}`, "error");
   }
 }
 
@@ -67,14 +71,6 @@ if (elements.terminalForm && elements.terminalInput && elements.terminalWindow) 
       e.preventDefault();
     }
   });
-}
-
-// --- Stub NPC and Debug Content ---
-if (elements.npcContent) {
-  elements.npcContent.textContent = "NPC is ready. Awaiting interaction...";
-}
-if (elements.debugContent) {
-  elements.debugContent.textContent = "Debug info will appear here.";
 }
 
 
